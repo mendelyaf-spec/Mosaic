@@ -45,7 +45,7 @@ function BorderedThread({ thread, owner, cx, cy, w = 260, h = 230, openSide = "r
   return (
     <>
       {/* paper plate — clickable */}
-      <div onClick={onClick} style={{
+      <div data-card onClick={onClick} style={{
         position: "absolute", left: x0, top: y0, width: w, height: h,
         borderRadius: r,
         background: `radial-gradient(circle at center, ${pal.bg}cc 0%, ${pal.bg}55 70%)`,
@@ -120,7 +120,7 @@ function BorderedThread({ thread, owner, cx, cy, w = 260, h = 230, openSide = "r
 function SharedItem({ x, y, kind, title, byList, accent, onClick }) {
   const initials = byList.map(b => (b.match(/[A-Z]/g) || b.slice(0, 1).toUpperCase())[0]);
   return (
-    <div onClick={onClick} style={{
+    <div data-card onClick={onClick} style={{
       position: "absolute", left: x, top: y,
       transform: "translate(-50%,-50%)",
       width: 196,
