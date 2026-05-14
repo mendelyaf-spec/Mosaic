@@ -688,7 +688,6 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
           onScrub={setHeadDays}
         />
         {cardOverlay}
-        {vestibuleOverlay}
 
         <div style={{
           paddingTop: 170, paddingLeft: 40, paddingRight: 40, paddingBottom: 100,

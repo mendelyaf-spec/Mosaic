@@ -454,10 +454,17 @@ function PanZoomCanvas({
   const dragRef = useRef({ dragging: false, sx: 0, sy: 0, ox: 0, oy: 0, moved: 0 });
   const [isDragging, setIsDragging] = useState(false);
 
-  // Mouse position for edge wander
-  const mouseRef = useRef({ x: 0, y: 0, inside: false });
+  // Mouse position for edge wander. `overUi` suppresses wander when the
+  // cursor is over chrome (view toggles, identity card, breadcrumb, zoom
+  // controls, apertures, cards) so passive hovering near an edge doesn't
+  // pan the canvas.
+  const mouseRef = useRef({ x: 0, y: 0, inside: false, overUi: false });
   useEffect(() => {
-    const onMove = (e) => { mouseRef.current = { x: e.clientX, y: e.clientY, inside: true }; };
+    const onMove = (e) => {
+      const t = e.target;
+      const overUi = !!(t && t.closest && t.closest('[data-ui], [data-card], [data-aperture], [data-aperture-bay]'));
+      mouseRef.current = { x: e.clientX, y: e.clientY, inside: true, overUi };
+    };
     const markOut = () => { mouseRef.current.inside = false; };
     window.addEventListener('mousemove', onMove);
     document.addEventListener('mouseleave', markOut);
@@ -475,7 +482,7 @@ function PanZoomCanvas({
     const tick = (ts) => {
       const dt = Math.min(40, ts - last);
       last = ts;
-      if (mouseRef.current.inside && !dragRef.current.dragging) {
+      if (mouseRef.current.inside && !mouseRef.current.overUi && !dragRef.current.dragging) {
         const { x, y } = mouseRef.current;
         const W = window.innerWidth, H = window.innerHeight;
         const margin = 90, maxV = 0.55;
