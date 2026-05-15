@@ -457,7 +457,7 @@ function CourtyardRoomImpl({ navigate, thread, viewMode = "maya" }) {
                       margin: "0 0 22px",
                     }}>{detail.byList.join(" · ")}</p>
                     <div style={{
-                      fontFamily: ST, fontStyle: "italic", fontSize: 13,
+                      fontFamily: SC, fontStyle: "italic", fontSize: 13,
                       color: "#5E5A55", lineHeight: 1.5,
                       borderLeft: `2px solid ${detail.accent}55`,
                       paddingLeft: 14, marginBottom: 22,

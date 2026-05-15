@@ -455,14 +455,15 @@ function PanZoomCanvas({
   const [isDragging, setIsDragging] = useState(false);
 
   // Mouse position for edge wander. `overUi` suppresses wander when the
-  // cursor is over chrome (view toggles, identity card, breadcrumb, zoom
-  // controls, apertures, cards) so passive hovering near an edge doesn't
-  // pan the canvas.
+  // cursor is over chrome (view toggles, scrubber, identity card,
+  // breadcrumb, zoom controls, pan hint, apertures) so passive hovering
+  // near an edge doesn't pan the canvas. Cards ([data-card]) are content,
+  // not chrome — drift still works over them.
   const mouseRef = useRef({ x: 0, y: 0, inside: false, overUi: false });
   useEffect(() => {
     const onMove = (e) => {
       const t = e.target;
-      const overUi = !!(t && t.closest && t.closest('[data-ui], [data-card], [data-aperture], [data-aperture-bay]'));
+      const overUi = !!(t && t.closest && t.closest('[data-ui], [data-aperture], [data-aperture-bay]'));
       mouseRef.current = { x: e.clientX, y: e.clientY, inside: true, overUi };
     };
     const markOut = () => { mouseRef.current.inside = false; };
