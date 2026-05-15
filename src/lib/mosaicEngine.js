@@ -15,8 +15,8 @@
 import { cacheKey, getCached, setCached } from './cache.js';
 
 const API_URL  = 'https://api.anthropic.com/v1/messages';
-const MODEL    = 'claude-sonnet-4-20250514';        // characterization, diff, etc.
-const FEED_MODEL = 'claude-haiku-4-5-20251001';    // slot-fills with web search
+const MODEL    = 'claude-sonnet-4-6';                  // characterization, diff, etc.
+const FEED_MODEL = 'claude-haiku-4-5-20251001';       // slot-fills with web search
 
 const WEB_SEARCH_MAX_USES = 3;                      // hard cap per call
 
@@ -69,8 +69,15 @@ export async function callClaude({
     body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (data.error) throw new Error(`Claude API error: ${data.error.message || data.error.type}`);
-  if (!data.content) throw new Error('No content in Claude response');
+  if (data.error) {
+    console.error('[mosaicEngine] API error response:', data.error);
+    const msg = data.error.message || data.error.type || JSON.stringify(data.error);
+    throw new Error(`Claude API error (${data.error.type || res.status}): ${msg}`);
+  }
+  if (!data.content) {
+    console.error('[mosaicEngine] response without content:', data);
+    throw new Error('No content in Claude response');
+  }
 
   const text = data.content
     .filter(b => b.type === 'text')
