@@ -47,11 +47,6 @@ export function PodAdminRoom({ navigate }) {
     note="Parent-view co-parent admin. Out of scope for Phase 1." />;
 }
 
-export function SearchRoom({ navigate }) {
-  return <Placeholder navigate={navigate} here="search" title="Search"
-    note="The four-posture search room. Will be wired to the Mosaic engine in Phase 3." />;
-}
-
 export function PromenadeRoom({ navigate }) {
   return <Placeholder navigate={navigate} here="promenade" title="Promenade"
     note="The shared discovery promenade. Out of scope for Phase 1." />;

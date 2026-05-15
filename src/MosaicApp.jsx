@@ -7,8 +7,9 @@ import { WM } from './data/wm-data.js';
 import { HomeRoom } from './rooms/Home.jsx';
 import { ThreadRoom } from './rooms/Thread.jsx';
 import { CourtyardRoom } from './rooms/Courtyard.jsx';
+import { SearchRoom } from './rooms/Search.jsx';
 import {
-  TownHallRoom, PodRoom, PodAdminRoom, SearchRoom, PromenadeRoom,
+  TownHallRoom, PodRoom, PodAdminRoom, PromenadeRoom,
 } from './rooms/Stubs.jsx';
 
 export default function MosaicApp() {
@@ -32,7 +33,7 @@ export default function MosaicApp() {
   if (room === 'townhall')  return <TownHallRoom  navigate={navigate} />;
   if (room === 'pod')       return <PodRoom       navigate={navigate} />;
   if (room === 'pod-admin') return <PodAdminRoom  navigate={navigate} />;
-  if (room === 'search')    return <SearchRoom    navigate={navigate} />;
+  if (room === 'search')    return <SearchRoom    navigate={navigate} fromThreadId={params.from} />;
   if (room === 'promenade') return <PromenadeRoom navigate={navigate} />;
 
   return (
