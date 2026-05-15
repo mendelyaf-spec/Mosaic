@@ -185,7 +185,7 @@ function formatTimeBudget(mins) {
   return `about ${Number.isInteger(days) ? days : days.toFixed(1)} day${days === 1 ? '' : 's'} of engagement`;
 }
 
-function fillMovePrompt({ move, question, characterization, excludeUrls, fromThread, maxTimePerItem }) {
+function fillMovePrompt({ move, question, characterization, excludeUrls, excludeMediaTypes, peerMoveLabels, fromThread, maxTimePerItem }) {
   const register = characterization.register || 'curious';
   const mode = characterization.mode || 'question';
   const isExplore = mode === 'explore';
@@ -198,7 +198,15 @@ function fillMovePrompt({ move, question, characterization, excludeUrls, fromThr
     ? `\n\nThey came here from a thread on: "${fromThread.q}". Bias toward openings, not echoes — don't collapse back into that thread.`
     : '';
 
-  return `You are filling one slot in the workbench of Mosaic, an inquiry platform. ${labelLine}${fromLine}
+  const peerLine = peerMoveLabels && peerMoveLabels.length > 1
+    ? `\n\nThis slot runs in parallel with ${peerMoveLabels.length - 1} other slot${peerMoveLabels.length === 2 ? '' : 's'} filling: ${peerMoveLabels.filter(l => l !== move.label).join(', ')}. The user has selected these moves together because they want variety across the feed — not four versions of the same kind of thing.`
+    : '';
+
+  const excludeMediaLine = excludeMediaTypes && excludeMediaTypes.length > 0
+    ? `\n\nAVOID these media types in this slot (they're already over-represented elsewhere in this feed): ${excludeMediaTypes.join(', ')}.`
+    : '';
+
+  return `You are filling one slot in the workbench of Mosaic, an inquiry platform. ${labelLine}${fromLine}${peerLine}
 
 Structural reading of what they brought:
 - Domain: ${characterization.domain}
@@ -216,6 +224,8 @@ The slot you are filling is called "${move.label}". Its job, as the author of th
 ${move.promptDescription}
 
 Your task: find ONE real item that fills this slot for this user, this question. Real URL. Real title. Real author/source. Use web search if helpful (you have at most ${WEB_SEARCH_MAX_USES} searches per slot).
+
+MEDIA VARIETY: essays and longform articles are the default failure mode — they fit almost every slot, which is why all four cards end up looking the same. DELIBERATELY reach for a less-obvious format when it still serves your slot: a video walkthrough, a podcast or radio piece, a Reddit thread of practitioners, a film clip, an art piece, an image, a book chapter (named specifically, not "this book"), a primary document. Only return an essay if it's genuinely the right form for your slot's intent.${excludeMediaLine}
 
 TIME BUDGET CONSTRAINT: the user has indicated they want each item to take ${formatTimeBudget(maxTimePerItem)} to engage with. Honor this. A 4-minute video is fine when they asked for 5 minutes; a 200-page book is not unless they asked for several hours. If the slot's nature demands depth, find something that fits both the slot AND the time budget — a chapter rather than a book, a podcast episode rather than a series.
 
@@ -250,6 +260,8 @@ function withTimeout(promise, ms = SLOT_TIMEOUT_MS) {
 export async function fillMove(move, question, characterization, opts = {}) {
   const {
     excludeUrls = [],
+    excludeMediaTypes = [],
+    peerMoveLabels = [],
     fromThread = null,
     maxTimePerItem = 30,
     model = FEED_MODEL,
@@ -257,7 +269,9 @@ export async function fillMove(move, question, characterization, opts = {}) {
 
   const baseAttempt = async (extra = '', useSearch = true) => {
     const prompt = fillMovePrompt({
-      move, question, characterization, excludeUrls, fromThread, maxTimePerItem,
+      move, question, characterization,
+      excludeUrls, excludeMediaTypes, peerMoveLabels,
+      fromThread, maxTimePerItem,
     }) + extra;
     const text = await withTimeout(callClaude({
       prompt,
@@ -306,10 +320,16 @@ export async function fillMove(move, question, characterization, opts = {}) {
 
 // ---------------- parallel fill + dedup -----------------------
 
+// Threshold for "over-represented" mediaType. With 4 slots, 3+ same → cluster.
+// With 5+ slots, 3+ same still triggers a diversification pass.
+const MEDIATYPE_CLUSTER_THRESHOLD = 3;
+
 export async function runFeedFill(question, moves, characterization, opts = {}, onSlotDone) {
-  // Phase 1: fire all moves in parallel.
+  const peerMoveLabels = moves.map(m => m.label);
+
+  // Phase 1: fire all moves in parallel, each aware of its peers.
   const initial = await Promise.all(moves.map(async (move) => {
-    const item = await fillMove(move, question, characterization, opts);
+    const item = await fillMove(move, question, characterization, { ...opts, peerMoveLabels });
     if (onSlotDone) onSlotDone(move.id, item);
     return item;
   }));
@@ -318,34 +338,84 @@ export async function runFeedFill(question, moves, characterization, opts = {}, 
   // keep the first occurrence and re-fill the rest with the dupe URLs excluded.
   const seen = new Set();
   const keepers = [];
-  const needRetry = [];
+  const dupRetry = [];
   for (const it of initial) {
     if (it.failed || !it.url) { keepers.push(it); continue; }
     if (seen.has(it.url)) {
-      needRetry.push(it);
+      dupRetry.push(it);
     } else {
       seen.add(it.url);
       keepers.push(it);
     }
   }
 
-  if (needRetry.length === 0) return initial;
+  if (dupRetry.length > 0) {
+    const excludeUrls = [...seen];
+    const retried = await Promise.all(dupRetry.map(async (orig) => {
+      const move = moves.find(m => m.id === orig.moveId);
+      if (!move) return orig;
+      const item = await fillMove(move, question, characterization, { ...opts, peerMoveLabels, excludeUrls });
+      if (onSlotDone) onSlotDone(move.id, item);
+      return item;
+    }));
+    // Update keepers with the retried versions.
+    const byMoveTmp = new Map();
+    for (const it of keepers) byMoveTmp.set(it.moveId, it);
+    for (const it of retried) byMoveTmp.set(it.moveId, it);
+    keepers.length = 0;
+    for (const m of moves) {
+      const it = byMoveTmp.get(m.id);
+      if (it) keepers.push(it);
+    }
+  }
 
-  // Re-fill the duplicates, excluding all kept URLs.
-  const excludeUrls = [...seen];
-  const retried = await Promise.all(needRetry.map(async (orig) => {
-    const move = moves.find(m => m.id === orig.moveId);
-    if (!move) return orig;
-    const item = await fillMove(move, question, characterization, { ...opts, excludeUrls });
-    if (onSlotDone) onSlotDone(move.id, item);
-    return item;
-  }));
+  // Phase 3: diversify by mediaType. If a mediaType is over-represented,
+  // re-fill the duplicates with that mediaType excluded. Keep the first
+  // occurrence of each over-represented type; re-roll the rest.
+  const typeCounts = new Map();
+  for (const it of keepers) {
+    if (it.failed || !it.mediaType) continue;
+    typeCounts.set(it.mediaType, (typeCounts.get(it.mediaType) || 0) + 1);
+  }
+  const overTypes = [...typeCounts.entries()]
+    .filter(([_, n]) => n >= MEDIATYPE_CLUSTER_THRESHOLD)
+    .map(([t]) => t);
 
-  // Reassemble in original move order.
-  const byMove = new Map();
-  for (const it of keepers) byMove.set(it.moveId, it);
-  for (const it of retried) byMove.set(it.moveId, it);
-  return moves.map(m => byMove.get(m.id)).filter(Boolean);
+  if (overTypes.length > 0) {
+    console.log('[mosaicEngine] mediaType cluster detected:', overTypes, '— diversifying');
+    const firstOfType = new Map(); // mediaType -> first item we'll keep
+    const needDiversify = [];
+    for (const it of keepers) {
+      if (it.failed || !it.mediaType) continue;
+      if (!overTypes.includes(it.mediaType)) continue;
+      if (!firstOfType.has(it.mediaType)) {
+        firstOfType.set(it.mediaType, it);
+      } else {
+        needDiversify.push(it);
+      }
+    }
+
+    const excludeUrls = keepers.filter(it => it.url).map(it => it.url);
+    const diversified = await Promise.all(needDiversify.map(async (orig) => {
+      const move = moves.find(m => m.id === orig.moveId);
+      if (!move) return orig;
+      const item = await fillMove(move, question, characterization, {
+        ...opts,
+        peerMoveLabels,
+        excludeUrls,
+        excludeMediaTypes: overTypes,
+      });
+      if (onSlotDone) onSlotDone(move.id, item);
+      return item;
+    }));
+
+    const byMove = new Map();
+    for (const it of keepers) byMove.set(it.moveId, it);
+    for (const it of diversified) byMove.set(it.moveId, it);
+    return moves.map(m => byMove.get(m.id)).filter(Boolean);
+  }
+
+  return moves.map(m => keepers.find(it => it.moveId === m.id)).filter(Boolean);
 }
 
 // ---------------- articulation diff ---------------------------
