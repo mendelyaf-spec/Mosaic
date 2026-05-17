@@ -16,6 +16,7 @@ import { WM } from '../data/wm-data.js';
 function ThreadCluster({ thread, pos, onOpen }) {
   const pal = WM.DOMAIN[thread.dc];
   const [hover, setHover] = useStateH(false);
+  const [showReframes, setShowReframes] = useStateH(false);
 
   const items = [
     ...(thread.fl || []).slice(0, 3).map(f => ({ ...f, _t: "find" })),
@@ -29,6 +30,8 @@ function ThreadCluster({ thread, pos, onOpen }) {
   // Track mousedown→mouseup ourselves; the parent canvas's pan-detection
   // can otherwise eat the synthesized click on transformed elements.
   const downRef = React.useRef({ x: 0, y: 0, t: 0 });
+  // Stop a click from bubbling to the card (which would navigate).
+  const swallow = (e) => { e.stopPropagation(); };
   return (
     <div data-card
          onMouseDown={e => { downRef.current = { x: e.clientX, y: e.clientY, t: Date.now() }; }}
@@ -46,28 +49,86 @@ function ThreadCluster({ thread, pos, onOpen }) {
       transform: hover ? "translateY(-3px)" : "translateY(0)",
     }}>
       {thread.mileMarkers && thread.mileMarkers.length > 1 && (
-        <div style={{
-          paddingLeft: 14, marginBottom: 6,
-          display: "flex", alignItems: "center", gap: 5,
-          fontSize: 8.5, color: "#9A968F", fontFamily: FH,
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-            {thread.mileMarkers.map((mm, i) => (
-              <React.Fragment key={i}>
-                <div style={{
-                  width: 4, height: 4, borderRadius: "50%",
-                  background: i === thread.mileMarkers.length - 1 ? pal.accent : pal.accent + "55",
-                }} />
-                {i < thread.mileMarkers.length - 1 && (
-                  <div style={{ width: 12, height: 1, background: pal.accent + "33" }} />
-                )}
-              </React.Fragment>
-            ))}
+        <div style={{ paddingLeft: 14, marginBottom: 6 }}>
+          <div
+            role="button"
+            title={showReframes ? "Hide reframes" : "See each reframe"}
+            onMouseDown={swallow}
+            onMouseUp={e => { swallow(e); setShowReframes(v => !v); }}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 5,
+              fontSize: 8.5, color: "#9A968F", fontFamily: FH,
+              cursor: "pointer", padding: "3px 6px 3px 0", borderRadius: 4,
+            }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+              {thread.mileMarkers.map((mm, i) => (
+                <React.Fragment key={i}>
+                  <div style={{
+                    width: 4, height: 4, borderRadius: "50%",
+                    background: i === thread.mileMarkers.length - 1 ? pal.accent : pal.accent + "55",
+                  }} />
+                  {i < thread.mileMarkers.length - 1 && (
+                    <div style={{ width: 12, height: 1, background: pal.accent + "33" }} />
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+            <span style={{ fontSize: 8, letterSpacing: ".06em", textTransform: "uppercase",
+                            color: showReframes ? pal.accent : "#B0ADA6", marginLeft: 4,
+                            fontWeight: showReframes ? 600 : 400 }}>
+              {thread.mileMarkers.length} reframes
+            </span>
+            <span style={{
+              fontSize: 8, color: "#B0ADA6", marginLeft: 2,
+              transform: showReframes ? "rotate(90deg)" : "rotate(0deg)",
+              transition: "transform .15s", display: "inline-block",
+            }}>▸</span>
           </div>
-          <span style={{ fontSize: 8, letterSpacing: ".06em", textTransform: "uppercase",
-                          color: "#B0ADA6", marginLeft: 4 }}>
-            {thread.mileMarkers.length} reframes
-          </span>
+
+          {showReframes && (
+            <div
+              onMouseDown={swallow}
+              onMouseUp={swallow}
+              style={{
+                marginTop: 6, marginBottom: 4,
+                background: "rgba(255,255,255,.7)",
+                border: `1px solid ${pal.accent}22`,
+                borderRadius: 6, padding: "10px 12px",
+                cursor: "default",
+              }}>
+              {thread.mileMarkers.map((mm, i) => {
+                const isCurrent = i === thread.mileMarkers.length - 1;
+                return (
+                  <div key={i} style={{
+                    display: "flex", gap: 8, alignItems: "flex-start",
+                    paddingBottom: i < thread.mileMarkers.length - 1 ? 8 : 0,
+                    marginBottom: i < thread.mileMarkers.length - 1 ? 8 : 0,
+                    borderBottom: i < thread.mileMarkers.length - 1
+                      ? "1px dashed rgba(26,23,20,.08)" : "none",
+                  }}>
+                    <div style={{
+                      width: 6, height: 6, borderRadius: "50%", flexShrink: 0, marginTop: 5,
+                      background: isCurrent ? pal.accent : pal.accent + "55",
+                    }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{
+                        fontSize: 8, letterSpacing: ".06em", textTransform: "uppercase",
+                        color: "#B0ADA6", fontFamily: FH, marginBottom: 2,
+                      }}>
+                        {mm.age}{isCurrent ? " · current" : ""}
+                      </div>
+                      <div style={{
+                        fontFamily: SH, fontStyle: "italic", fontSize: 12.5,
+                        color: isCurrent ? "#1A1714" : "#5E5A55", lineHeight: 1.35,
+                      }}>
+                        {mm.q}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
