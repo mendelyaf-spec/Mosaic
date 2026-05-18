@@ -528,6 +528,100 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
     </div>
   );
 
+  // Courtyards summary — bottom-right, above the zoom control. Only threads
+  // that actually have a courtyard (the seeded ones; user-created threads
+  // carry courtyardName: null until shared). "new" counts come from
+  // COURTYARD.incoming keyed by threadId.
+  const courtyardThreads = threads.filter(t => t.courtyardName);
+  const incoming = WM.COURTYARD?.incoming || [];
+  const newFor = (tid) => incoming.filter(r => r.threadId === tid).length;
+  const totalNew = courtyardThreads.reduce((n, t) => n + newFor(t.id), 0);
+
+  const courtyardsPanel = courtyardThreads.length > 0 && (
+    <div data-ui style={{
+      position: "fixed", right: 58, bottom: 18, zIndex: 20,
+      width: 268, background: "rgba(248,244,233,.96)",
+      backdropFilter: "blur(8px)",
+      border: "1px solid rgba(26,23,20,.1)", borderRadius: 8,
+      boxShadow: "0 4px 20px rgba(40,30,15,.08)",
+      padding: "12px 14px 10px",
+      opacity: fade, transition: "opacity .2s",
+      fontFamily: FH,
+    }}>
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        marginBottom: 10,
+      }}>
+        <span style={{
+          fontSize: 9, letterSpacing: ".14em", textTransform: "uppercase",
+          color: "#5E5A55", fontWeight: 600,
+        }}>♥ Your courtyards</span>
+        {totalNew > 0 && (
+          <span style={{
+            display: "inline-flex", alignItems: "center", gap: 4,
+            fontSize: 9, letterSpacing: ".1em", textTransform: "uppercase",
+            color: "#75580D", fontWeight: 600,
+          }}>
+            <span style={{
+              width: 5, height: 5, borderRadius: "50%", background: "#C58A1A",
+            }} />
+            {totalNew} new
+          </span>
+        )}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+        {courtyardThreads.map(t => {
+          const pal = WM.DOMAIN[t.dc] || WM.DOMAIN.teal;
+          const nNew = newFor(t.id);
+          const nKindred = (t.kindred || []).length;
+          return (
+            <div key={t.id}
+              onClick={() => navigate("courtyard", { id: t.id })}
+              style={{
+                display: "flex", alignItems: "center", gap: 10,
+                cursor: "pointer", padding: "4px 4px", borderRadius: 5,
+                transition: "background .12s",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(26,23,20,.04)"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
+              {/* mini orbit dots */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: 2, flexShrink: 0,
+              }}>
+                {[0, 1, 2].map(i => (
+                  <div key={i} style={{
+                    width: i === 1 ? 7 : 4, height: i === 1 ? 7 : 4,
+                    borderRadius: "50%",
+                    background: i === 1 ? pal.accent : pal.accent + "44",
+                  }} />
+                ))}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontFamily: SH, fontStyle: "italic", fontSize: 14,
+                  fontWeight: 400, color: "#1A1714", lineHeight: 1.2,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}>{t.courtyardName}</div>
+                <div style={{
+                  fontSize: 9.5, color: "#9A968F", marginTop: 2,
+                }}>
+                  {nKindred} kindred
+                  {nNew > 0 && (
+                    <span style={{ color: pal.accent, fontWeight: 600 }}> · {nNew} new</span>
+                  )}
+                </div>
+              </div>
+              <span style={{
+                fontSize: 13, color: pal.accent, flexShrink: 0,
+              }}>→</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   // ============ TIMELINE VIEW ============
   // Horizontal time axis. Three thread lanes stacked vertically. Recent right, older left.
   // Reuses `artifacts` (finds, notes, reframes) — placed by date along the axis.
@@ -561,6 +655,7 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
       }}>
         {identityCard}
         {periodPills}
+        {courtyardsPanel}
         {breadcrumb}
 
         {/* Timeline canvas — horizontal scroll if needed */}
@@ -729,6 +824,7 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
         <>
           {identityCard}
           {periodPills}
+          {courtyardsPanel}
           {apertures.map((a, i) => <ApertureH key={i} {...a} />)}
           {breadcrumb}
         </>
