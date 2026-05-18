@@ -204,25 +204,38 @@ export function buildThreadFromSession({
 // untouched. Mirrors the persona model (wm-data t-grief) and the legacy
 // EngineApp spawnContext.
 //
-//   parentThreadId   id of the thread this forked from
+// You can spawn off your OWN thread (pass its id) or off SOMEONE ELSE's
+// card — a courtyard shared item / kindred find (pass {owner, viaCard}).
+// Foreign spawns carry owner-based lineage instead of a thread id, since
+// you can't see inside their thread; you only know it came from them.
+//
+//   parentThreadId   id of YOUR thread this forked from, or null/'' if foreign
 //   session          same shape as buildThreadFromSession
-//   reason           optional human note for why it split off
-export function spawnThreadFromSession(parentThreadId, session, reason = '') {
-  const parent = getThreadById(parentThreadId);
+//   opts.owner       foreign origin's owner (when parentThreadId is absent)
+//   opts.viaCard     the foreign card title the fork came through
+//   opts.reason      optional explicit "why it split off" note
+export function spawnThreadFromSession(parentThreadId, session, opts = {}) {
+  const { owner = '', viaCard = '', reason = '' } = opts;
+  const parent = parentThreadId ? getThreadById(parentThreadId) : null;
   const base = buildThreadFromSession(session);
-  const rootId = (parent && (parent.rootThreadId || parent.id)) || parentThreadId;
   const parentQ = (parent && parent.q) || '';
-  const why = reason
-    || (parentQ
-        ? `split off from “${parentQ.length > 56 ? parentQ.slice(0, 56) + '…' : parentQ}”`
-        : 'split off from a deeper look');
-  const spawned = {
-    ...base,
-    state: 'spawned',
-    spawnedFrom: { id: parentThreadId, at: 'just now', reason: why },
-    parentThreadId,
-    rootThreadId: rootId,
-  };
+
+  let spawnedFrom, lineage;
+  if (parent) {
+    const why = reason
+      || `split off from “${parentQ.length > 56 ? parentQ.slice(0, 56) + '…' : parentQ}”`;
+    spawnedFrom = { id: parent.id, at: 'just now', reason: why };
+    lineage = { parentThreadId: parent.id, rootThreadId: parent.rootThreadId || parent.id };
+  } else {
+    const why = reason
+      || (owner
+          ? `split off from ${owner}${viaCard ? ` · “${viaCard.length > 48 ? viaCard.slice(0, 48) + '…' : viaCard}”` : ''}`
+          : 'split off from a deeper look');
+    spawnedFrom = { owner: owner || null, viaCard: viaCard || null, at: 'just now', reason: why };
+    lineage = { parentThreadId: null, rootThreadId: null };
+  }
+
+  const spawned = { ...base, state: 'spawned', spawnedFrom, ...lineage };
   saveThread(spawned);
   return spawned;
 }

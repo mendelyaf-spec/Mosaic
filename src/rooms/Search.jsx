@@ -638,8 +638,7 @@ export function SearchRoom({ navigate, fromThreadId, deepenCard }) {
   };
 
   const spawnSession = () => {
-    if (!fromThread) return;
-    const thread = spawnThreadFromSession(fromThread.id, {
+    const sess = {
       originalQ: submitted,
       evolvedQ,
       characterization,
@@ -648,7 +647,15 @@ export function SearchRoom({ navigate, fromThreadId, deepenCard }) {
       signals,
       diffMoves,
       seededFrom,
-    });
+    };
+    // Own thread → lineage by id. Foreign card (no own thread) → lineage by
+    // owner: you can spawn off someone else's card just as well as your own.
+    const thread = canAppend
+      ? spawnThreadFromSession(fromThread.id, sess)
+      : spawnThreadFromSession(null, sess, {
+          owner: seededFrom?.fromOwner || '',
+          viaCard: seededFrom?.title || '',
+        });
     if (historyId && thread) {
       updateHistory(historyId, { savedThreadId: thread.id, signals, evolvedQ, diffMoves });
     }
@@ -937,14 +944,14 @@ export function SearchRoom({ navigate, fromThreadId, deepenCard }) {
                     border: '1px solid rgba(26,92,70,.35)',
                   }}>Skip — append to this thread</button>
                 )}
-                {canAppend && (
+                {(canAppend || foreignDeepen) && (
                   <button onClick={spawnSession} style={{
                     fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '.14em',
                     textTransform: 'uppercase', fontWeight: 500,
                     padding: '8px 16px', borderRadius: 3, cursor: 'pointer',
                     background: 'transparent', color: '#7d6b50',
                     border: '1px solid rgba(125,107,80,.4)',
-                  }}>Skip — spawn a thread off this</button>
+                  }}>Skip — spawn a thread off {canAppend ? 'this' : (seededFrom?.fromOwner || 'this')}</button>
                 )}
                 {foreignDeepen && myThreads.length > 0 && (
                   <span style={{ display: 'inline-flex', gap: 6 }}>
@@ -1018,13 +1025,13 @@ export function SearchRoom({ navigate, fromThreadId, deepenCard }) {
                       background: '#1A5C46', color: '#F6F3EC', border: 'none',
                     }}>Append to “{fromThread.q.length > 32 ? fromThread.q.slice(0, 32) + '…' : fromThread.q}” →</button>
                   )}
-                  {canAppend && (
+                  {(canAppend || foreignDeepen) && (
                     <button onClick={spawnSession} style={{
                       fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '.14em',
                       textTransform: 'uppercase', fontWeight: 600,
                       padding: '9px 20px', borderRadius: 3, cursor: 'pointer',
                       background: '#7d6b50', color: '#F6F3EC', border: 'none',
-                    }}>Spawn a thread off this →</button>
+                    }}>Spawn a thread off {canAppend ? 'this' : (seededFrom?.fromOwner || 'this')} →</button>
                   )}
                   {foreignDeepen && myThreads.length > 0 && (
                     <span style={{ display: 'inline-flex', gap: 6 }}>
