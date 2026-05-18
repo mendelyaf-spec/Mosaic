@@ -12,7 +12,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Aperture, Breadcrumb, FONT_SERIF, FONT_SANS, FONT_MONO } from '../shell/shell.jsx';
 import { characterize, runFeedFill, articulationDiff } from '../lib/mosaicEngine.js';
 import { loadMoves, loadPrefs, savePrefs, saveUserMove, TIME_OPTIONS } from '../lib/moves.js';
-import { buildThreadFromSession, saveThread } from '../lib/threads.js';
+import { buildThreadFromSession, saveThread, appendSessionToThread, isOwnThread } from '../lib/threads.js';
 import { loadHistory, recordSearch, updateHistory, deleteHistory, clearHistory, relativeTime } from '../lib/searchHistory.js';
 import { WM } from '../data/wm-data.js';
 
@@ -571,16 +571,19 @@ export function SearchRoom({ navigate, fromThreadId }) {
     }
   };
 
+  // DOS opened from one of your own threads → you can append this session
+  // to it as a new reframe instead of spawning a brand-new thread.
+  const canAppend = !!fromThread && isOwnThread(fromThread.id);
+
+  const orderedItems = () => selectedMoves.map(m => items[m.id]).filter(Boolean);
+
   const saveSession = () => {
-    const orderedItems = selectedMoves
-      .map(m => items[m.id])
-      .filter(Boolean);
     const thread = buildThreadFromSession({
       originalQ: submitted,
       evolvedQ,
       characterization,
       moves: selectedMoves,
-      items: orderedItems,
+      items: orderedItems(),
       signals,
       diffMoves,
     });
@@ -589,6 +592,21 @@ export function SearchRoom({ navigate, fromThreadId }) {
       updateHistory(historyId, { savedThreadId: thread.id, signals, evolvedQ, diffMoves });
     }
     navigate('thread', { id: thread.id });
+  };
+
+  const appendSession = () => {
+    if (!fromThread) return;
+    const thread = appendSessionToThread(fromThread.id, {
+      evolvedQ: evolvedQ || submitted,
+      moves: selectedMoves,
+      items: orderedItems(),
+      signals,
+      diffMoves,
+    });
+    if (historyId && thread) {
+      updateHistory(historyId, { savedThreadId: thread.id, signals, evolvedQ, diffMoves });
+    }
+    navigate('thread', { id: (thread && thread.id) || fromThread.id });
   };
 
   const restoreSearch = (rec) => {
@@ -816,13 +834,22 @@ export function SearchRoom({ navigate, fromThreadId }) {
                   }}>
                   {phase === 'diffing' ? 'Reading the shift…' : 'See what moved →'}
                 </button>
+                {canAppend && (
+                  <button onClick={appendSession} style={{
+                    fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '.14em',
+                    textTransform: 'uppercase', fontWeight: 500,
+                    padding: '8px 16px', borderRadius: 3, cursor: 'pointer',
+                    background: 'transparent', color: '#1A5C46',
+                    border: '1px solid rgba(26,92,70,.35)',
+                  }}>Skip — append to this thread</button>
+                )}
                 <button onClick={saveSession} style={{
                   fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '.14em',
                   textTransform: 'uppercase', fontWeight: 500,
                   padding: '8px 16px', borderRadius: 3, cursor: 'pointer',
                   background: 'transparent', color: '#5E5A55',
                   border: '1px solid rgba(26,23,20,.18)',
-                }}>Skip — just save</button>
+                }}>Skip — {canAppend ? 'save as new thread' : 'just save'}</button>
               </div>
             )}
 
@@ -854,13 +881,24 @@ export function SearchRoom({ navigate, fromThreadId }) {
                     }}>{d.content}</div>
                   </div>
                 ))}
-                <button onClick={saveSession} style={{
-                  marginTop: 8,
-                  fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '.14em',
-                  textTransform: 'uppercase', fontWeight: 600,
-                  padding: '9px 20px', borderRadius: 3, cursor: 'pointer',
-                  background: '#1A5C46', color: '#F6F3EC', border: 'none',
-                }}>Save this session as a thread →</button>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
+                  {canAppend && (
+                    <button onClick={appendSession} style={{
+                      fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '.14em',
+                      textTransform: 'uppercase', fontWeight: 600,
+                      padding: '9px 20px', borderRadius: 3, cursor: 'pointer',
+                      background: '#1A5C46', color: '#F6F3EC', border: 'none',
+                    }}>Append to “{fromThread.q.length > 32 ? fromThread.q.slice(0, 32) + '…' : fromThread.q}” →</button>
+                  )}
+                  <button onClick={saveSession} style={{
+                    fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '.14em',
+                    textTransform: 'uppercase', fontWeight: canAppend ? 500 : 600,
+                    padding: '9px 20px', borderRadius: 3, cursor: 'pointer',
+                    background: canAppend ? 'transparent' : '#1A5C46',
+                    color: canAppend ? '#5E5A55' : '#F6F3EC',
+                    border: canAppend ? '1px solid rgba(26,23,20,.18)' : 'none',
+                  }}>{canAppend ? 'Save as new thread instead' : 'Save this session as a thread →'}</button>
+                </div>
               </>
             )}
           </div>

@@ -25,13 +25,29 @@ export function saveThread(thread) {
 }
 
 export function getAllThreads() {
-  return [...loadUserThreads(), ...WM.THREADS];
+  // User threads override seeded threads of the same id (so an appended-to
+  // seed thread shows its updated copy, not a duplicate).
+  const user = loadUserThreads();
+  const userIds = new Set(user.map(t => t.id));
+  const seed = WM.THREADS.filter(t => !userIds.has(t.id));
+  return [...user, ...seed];
 }
 
 export function getThreadById(id) {
   return getAllThreads().find(t => t.id === id)
       || (WM.KINDRED_THREADS || []).find(t => t.id === id)
       || null;
+}
+
+// True if this id is one of the user's own threads (a saved DOS thread, or a
+// seed thread they've already appended to and thus copied into user storage).
+// Seeded Maya threads count as "yours" in the single-user model — appending
+// to one creates a user-storage copy that overrides the seed.
+export function isOwnThread(id) {
+  if (!id) return false;
+  if (loadUserThreads().some(t => t.id === id)) return true;
+  if (WM.THREADS.some(t => t.id === id)) return true;          // seeded = Maya = you
+  return false; // KINDRED_THREADS are other people's
 }
 
 // Map an engine mediaType to the single-glyph icon the design's FindCard
@@ -154,4 +170,95 @@ export function buildThreadFromSession({
     courtyardTopic: null,
     _userCreated: true,
   };
+}
+
+// Build find objects for a session, tethered to a given marker id.
+function buildFinds({ items, signals = {}, moves = [], diffMoves = [], markerId, tsBase }) {
+  const diffText = (diffMoves || [])
+    .map(d => `${d.label}: ${d.content}`)
+    .join('  ·  ');
+  const chosen = items.filter(it => signals[it.moveId] === 'moved');
+  return chosen.map((it, i) => {
+    const move = moves.find(m => m.id === it.moveId);
+    return {
+      id: `f-${tsBase}-${i}`,
+      t: it.title || '(untitled)',
+      s: it.source || '',
+      url: it.url || '',
+      i: mediaIcon(it.mediaType),
+      d: 'just now',
+      moveId: it.moveId,
+      moveLabel: move?.label || it.moveId,
+      markerId,
+      mediaType: it.mediaType,
+      estimatedMinutes: it.estimatedMinutes,
+      signal: 'moved',
+      note: diffText ? `This moved me. ${diffText}` : 'This moved me.',
+    };
+  });
+}
+
+// Append a DOS session to an existing thread as a new reframe (Model B): a
+// new mile-marker = the re-articulated question, plus the moved finds tethered
+// to it. Optionally seed-pin one external item (a card the session was
+// "deepened" from) as a find too. Writes to user storage; if `threadId` was a
+// seeded Maya thread, this creates a user-storage copy that overrides the seed.
+//
+//   threadId     id of the thread to append to
+//   evolvedQ     the re-articulated question (becomes the new current marker)
+//   moves/items/signals/diffMoves   same as buildThreadFromSession
+//   seededFrom   optional { title, source, url, mediaType } — a foreign card
+//                this session went deeper on; saved as a pinned find
+export function appendSessionToThread(threadId, {
+  evolvedQ, moves = [], items = [], signals = {}, diffMoves = [], seededFrom = null,
+}) {
+  const existing = getThreadById(threadId);
+  if (!existing) return null;
+  // Deep-ish clone so we don't mutate the seed object in memory.
+  const thread = JSON.parse(JSON.stringify(existing));
+  const ts = Date.now();
+
+  const newQ = (evolvedQ || '').trim() || thread.q;
+  const markers = thread.mileMarkers || [];
+  const lastMarker = markers[markers.length - 1];
+  // Only add a new marker if the question actually moved.
+  let currentMarkerId;
+  if (!lastMarker || (lastMarker.q || '').trim() !== newQ) {
+    const newMarker = { id: `m-${ts}`, age: 'just now', q: newQ };
+    markers.push(newMarker);
+    currentMarkerId = newMarker.id;
+  } else {
+    currentMarkerId = lastMarker.id;
+  }
+
+  const newFinds = buildFinds({ items, signals, moves, diffMoves, markerId: currentMarkerId, tsBase: ts });
+
+  if (seededFrom && seededFrom.url) {
+    newFinds.unshift({
+      id: `f-${ts}-seed`,
+      t: seededFrom.title || '(untitled)',
+      s: seededFrom.source || '',
+      url: seededFrom.url || '',
+      i: mediaIcon(seededFrom.mediaType),
+      d: 'just now',
+      markerId: currentMarkerId,
+      mediaType: seededFrom.mediaType,
+      signal: 'moved',
+      note: seededFrom.fromOwner
+        ? `Saved from ${seededFrom.fromOwner}. Went deeper on this here.`
+        : 'Went deeper on this here.',
+    });
+  }
+
+  thread.mileMarkers = markers;
+  thread.fl = [...(thread.fl || []), ...newFinds];
+  thread.q = newQ;
+  thread.last = 'just now';
+  thread.state = 'active';
+  thread.finds = thread.fl.length;
+  thread.notes = thread.fl.filter(f => f.note).length;
+  thread._userCreated = true;
+
+  saveThread(thread);
+  return thread;
 }
