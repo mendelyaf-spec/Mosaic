@@ -107,10 +107,16 @@ export function buildThreadFromSession({
     .map(d => `${d.label}: ${d.content}`)
     .join('  ·  ');
 
-  const fl = items.map((it, i) => {
-    const sig = signals[it.moveId] || null;
+  // Only items the user signalled as "moved" are saved as finds. Dismissed
+  // and unmarked items are dropped — the thread holds what you chose, not
+  // everything the search surfaced. Saving with nothing chosen yields a
+  // thread with just the question + reframe history (an honest "I looked,
+  // nothing landed" record).
+  const chosen = items.filter(it => signals[it.moveId] === 'moved');
+
+  const fl = chosen.map((it, i) => {
     const move = moves.find(m => m.id === it.moveId);
-    const find = {
+    return {
       id: `f-${ts}-${i}`,
       t: it.title || '(untitled)',
       s: it.source || '',
@@ -123,16 +129,11 @@ export function buildThreadFromSession({
       markerId: currentMarkerId,
       mediaType: it.mediaType,
       estimatedMinutes: it.estimatedMinutes,
-      signal: sig,
+      signal: 'moved',
+      // The note carries the slice of the articulation diff this find is
+      // responsible for — appended to the find itself, not free-floating.
+      note: diffText ? `This moved me. ${diffText}` : 'This moved me.',
     };
-    // Note appended ONLY to finds the user said moved them. It carries the
-    // slice of the articulation diff this find is responsible for.
-    if (sig === 'moved') {
-      find.note = diffText
-        ? `This moved me. ${diffText}`
-        : 'This moved me.';
-    }
-    return find;
   });
 
   return {
