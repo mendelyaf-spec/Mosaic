@@ -13,6 +13,7 @@ import { Aperture, Breadcrumb, FONT_SERIF, FONT_SANS, FONT_MONO } from '../shell
 import { characterize, runFeedFill, articulationDiff } from '../lib/mosaicEngine.js';
 import { loadMoves, loadPrefs, savePrefs, saveUserMove, TIME_OPTIONS } from '../lib/moves.js';
 import { buildThreadFromSession, saveThread } from '../lib/threads.js';
+import { loadHistory, recordSearch, updateHistory, deleteHistory, clearHistory, relativeTime } from '../lib/searchHistory.js';
 import { WM } from '../data/wm-data.js';
 
 function timeChipLabel(mins) {
@@ -346,6 +347,103 @@ function SettingsDrawer({ open, prefs, setPrefs, allMoves, onClose, onCoinMove }
   );
 }
 
+function HistoryDrawer({ open, onClose, history, onRestore, onDelete, onClear }) {
+  if (!open) return null;
+  return (
+    <>
+      <div data-ui onClick={onClose} style={{
+        position: 'fixed', inset: 0, zIndex: 60,
+        background: 'rgba(31,28,23,0.35)', backdropFilter: 'blur(2px)',
+      }} />
+      <div data-ui style={{
+        position: 'fixed', top: 0, right: 0, bottom: 0,
+        width: 'min(480px, 92vw)', background: '#FAF5E9',
+        borderLeft: '1px solid rgba(26,23,20,.1)',
+        boxShadow: '-20px 0 60px rgba(40,30,15,.2)',
+        zIndex: 61, overflow: 'auto', padding: '32px 28px',
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+          marginBottom: 4,
+        }}>
+          <div style={{
+            fontFamily: FONT_MONO, fontSize: 9, letterSpacing: '.18em',
+            textTransform: 'uppercase', color: '#9A968F',
+          }}>§03 History</div>
+          {history.length > 0 && (
+            <button onClick={onClear} style={{
+              fontFamily: FONT_MONO, fontSize: 9, letterSpacing: '.12em',
+              textTransform: 'uppercase', color: '#8C3A4F',
+              background: 'transparent', border: 'none', cursor: 'pointer',
+            }}>clear all</button>
+          )}
+        </div>
+        <h1 style={{
+          fontFamily: FONT_SERIF, fontStyle: 'italic', fontWeight: 300,
+          fontSize: 32, margin: '0 0 22px', color: '#1A1714',
+        }}>Past searches</h1>
+
+        {history.length === 0 && (
+          <p style={{
+            fontFamily: FONT_SANS, fontSize: 13, color: '#7A756F',
+            fontStyle: 'italic',
+          }}>Nothing yet. Every question you take down shows up here — reopening one is free.</p>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {history.map(rec => {
+            const moved = Object.values(rec.signals || {}).filter(v => v === 'moved').length;
+            return (
+              <div key={rec.id}
+                onClick={() => onRestore(rec)}
+                style={{
+                  background: '#FFFFFF', border: '1px solid rgba(26,23,20,.1)',
+                  borderRadius: 6, padding: '12px 14px', cursor: 'pointer',
+                  position: 'relative',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(26,92,70,.4)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(26,23,20,.1)'; }}>
+                <button onClick={(e) => { e.stopPropagation(); onDelete(rec.id); }}
+                  title="Delete from history"
+                  style={{
+                    position: 'absolute', top: 8, right: 8,
+                    background: 'transparent', border: 'none', cursor: 'pointer',
+                    color: '#C0BDB6', fontSize: 13, lineHeight: 1, padding: 4,
+                  }}>×</button>
+                <div style={{
+                  fontFamily: FONT_SERIF, fontStyle: 'italic', fontWeight: 300,
+                  fontSize: 16, lineHeight: 1.3, color: '#1A1714',
+                  marginBottom: 6, paddingRight: 18,
+                }}>“{rec.question}”</div>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+                  fontFamily: FONT_MONO, fontSize: 9, color: '#9A968F',
+                  letterSpacing: '.06em',
+                }}>
+                  <span>{relativeTime(rec.ts)}</span>
+                  <span style={{ opacity: .5 }}>·</span>
+                  <span>{rec.moveIds.length} moves</span>
+                  {moved > 0 && (
+                    <>
+                      <span style={{ opacity: .5 }}>·</span>
+                      <span style={{ color: '#1A5C46' }}>{moved} moved you</span>
+                    </>
+                  )}
+                  {rec.savedThreadId && (
+                    <span style={{
+                      marginLeft: 'auto', color: '#1A5C46', fontWeight: 600,
+                    }}>✓ saved</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}
+
 export function SearchRoom({ navigate, fromThreadId }) {
   const fromThread = useMemo(() => {
     if (!fromThreadId) return null;
@@ -374,8 +472,18 @@ export function SearchRoom({ navigate, fromThreadId }) {
   const [signals, setSignals] = useState({});   // moveId -> 'moved' | 'dismiss' | null
   const [evolvedQ, setEvolvedQ] = useState('');
   const [diffMoves, setDiffMoves] = useState([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState(loadHistory);
+  const [historyId, setHistoryId] = useState(null);
   const inputRef = useRef(null);
   useEffect(() => { inputRef.current?.focus(); }, []);
+
+  // Keep the active history entry in sync as the user signals / re-articulates.
+  useEffect(() => {
+    if (!historyId) return;
+    updateHistory(historyId, { signals, evolvedQ, diffMoves });
+    setHistory(loadHistory());
+  }, [signals, evolvedQ, diffMoves, historyId]);
 
   const onSignal = (moveId, val) =>
     setSignals(prev => ({ ...prev, [moveId]: val }));
@@ -416,6 +524,20 @@ export function SearchRoom({ navigate, fromThreadId }) {
       setItems(byMove);
       setLoadingMoves({});
       setPhase('done');
+
+      const id = recordSearch({
+        question: text,
+        fromThreadId: fromThread?.id || null,
+        moveIds: selectedMoves.map(m => m.id),
+        maxTimePerItem: prefsState.maxTimePerItem,
+        characterization: ch,
+        items: results,
+        signals: {},
+        evolvedQ: '',
+        diffMoves: [],
+      });
+      setHistoryId(id);
+      setHistory(loadHistory());
     } catch (e) {
       console.error(e);
       setError(e.message || String(e));
@@ -463,7 +585,40 @@ export function SearchRoom({ navigate, fromThreadId }) {
       diffMoves,
     });
     saveThread(thread);
+    if (historyId) {
+      updateHistory(historyId, { savedThreadId: thread.id, signals, evolvedQ, diffMoves });
+    }
     navigate('thread', { id: thread.id });
+  };
+
+  const restoreSearch = (rec) => {
+    setPrefs({ selectedMoves: rec.moveIds, maxTimePerItem: rec.maxTimePerItem });
+    setSubmitted(rec.question);
+    setInput(rec.question);
+    setCharacterization(rec.characterization || null);
+    const byMove = {};
+    for (const it of (rec.items || [])) byMove[it.moveId] = it;
+    setItems(byMove);
+    setLoadingMoves({});
+    setSignals(rec.signals || {});
+    setEvolvedQ(rec.evolvedQ || '');
+    setDiffMoves(rec.diffMoves || []);
+    setHistoryId(rec.id);
+    setError(null);
+    setPhase((rec.diffMoves && rec.diffMoves.length) ? 'diffed' : 'done');
+    setHistoryOpen(false);
+  };
+
+  const removeHistory = (id) => {
+    deleteHistory(id);
+    setHistory(loadHistory());
+    if (id === historyId) setHistoryId(null);
+  };
+
+  const wipeHistory = () => {
+    clearHistory();
+    setHistory([]);
+    setHistoryId(null);
   };
 
   const busy = phase === 'characterizing' || phase === 'filling' || phase === 'diffing';
@@ -494,12 +649,20 @@ export function SearchRoom({ navigate, fromThreadId }) {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
           <span>§03 DOS · depth of search{fromThread && <span style={{ color: '#1A5C46' }}> · from your thread</span>}</span>
-          <button onClick={() => setSettingsOpen(true)} style={{
-            fontFamily: FONT_MONO, fontSize: 10, letterSpacing: '.14em',
-            textTransform: 'uppercase', color: '#5E5A55',
-            background: 'transparent', border: '1px solid rgba(26,23,20,.15)',
-            padding: '4px 10px', borderRadius: 2, cursor: 'pointer',
-          }}>⚙ settings</button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => { setHistory(loadHistory()); setHistoryOpen(true); }} style={{
+              fontFamily: FONT_MONO, fontSize: 10, letterSpacing: '.14em',
+              textTransform: 'uppercase', color: '#5E5A55',
+              background: 'transparent', border: '1px solid rgba(26,23,20,.15)',
+              padding: '4px 10px', borderRadius: 2, cursor: 'pointer',
+            }}>⏱ history{history.length ? ` (${history.length})` : ''}</button>
+            <button onClick={() => setSettingsOpen(true)} style={{
+              fontFamily: FONT_MONO, fontSize: 10, letterSpacing: '.14em',
+              textTransform: 'uppercase', color: '#5E5A55',
+              background: 'transparent', border: '1px solid rgba(26,23,20,.15)',
+              padding: '4px 10px', borderRadius: 2, cursor: 'pointer',
+            }}>⚙ settings</button>
+          </div>
         </div>
         <h1 style={{
           fontFamily: FONT_SERIF, fontStyle: 'italic', fontWeight: 300,
@@ -729,6 +892,13 @@ export function SearchRoom({ navigate, fromThreadId }) {
         allMoves={allMoves}
         onClose={() => setSettingsOpen(false)}
         onCoinMove={onCoinMove} />
+
+      <HistoryDrawer open={historyOpen}
+        history={history}
+        onClose={() => setHistoryOpen(false)}
+        onRestore={restoreSearch}
+        onDelete={removeHistory}
+        onClear={wipeHistory} />
     </div>
   );
 }
