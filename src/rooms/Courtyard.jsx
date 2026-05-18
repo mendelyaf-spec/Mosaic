@@ -475,6 +475,19 @@ function CourtyardRoomImpl({ navigate, thread, viewMode = "maya" }) {
                         background: "transparent", border: "1px solid rgba(26,23,20,.15)",
                         padding: "8px 14px", borderRadius: 3, cursor: "pointer",
                       }}>add to my thread</button>
+                      <button onClick={() => navigate("search", {
+                        deepen: {
+                          t: detail.title,
+                          s: `shared ${detail.kind}`,
+                          mediaType: detail.kind,
+                          fromOwner: (detail.byList && detail.byList.join(", ")) || detail.who || null,
+                        },
+                      })} style={{
+                        fontFamily: MC, fontSize: 10, letterSpacing: ".12em",
+                        textTransform: "uppercase", color: detail.accent,
+                        background: "transparent", border: `1px solid ${detail.accent}55`,
+                        padding: "8px 14px", borderRadius: 3, cursor: "pointer",
+                      }}>go deeper (DOS) →</button>
                     </div>
                   </>
                 )}

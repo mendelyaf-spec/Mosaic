@@ -12,9 +12,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Aperture, Breadcrumb, FONT_SERIF, FONT_SANS, FONT_MONO } from '../shell/shell.jsx';
 import { characterize, runFeedFill, articulationDiff } from '../lib/mosaicEngine.js';
 import { loadMoves, loadPrefs, savePrefs, saveUserMove, TIME_OPTIONS } from '../lib/moves.js';
-import { buildThreadFromSession, saveThread, appendSessionToThread, spawnThreadFromSession, isOwnThread } from '../lib/threads.js';
+import { buildThreadFromSession, saveThread, appendSessionToThread, spawnThreadFromSession, isOwnThread, getThreadById, getAllThreads } from '../lib/threads.js';
 import { loadHistory, recordSearch, updateHistory, deleteHistory, clearHistory, relativeTime } from '../lib/searchHistory.js';
-import { WM } from '../data/wm-data.js';
 
 function timeChipLabel(mins) {
   if (mins == null || mins === 0) return '—';
@@ -444,12 +443,27 @@ function HistoryDrawer({ open, onClose, history, onRestore, onDelete, onClear })
   );
 }
 
-export function SearchRoom({ navigate, fromThreadId }) {
+export function SearchRoom({ navigate, fromThreadId, deepenCard }) {
+  // Resolve through getThreadById so saved DOS threads (user storage) and
+  // appended-to seed copies are found too — not just the seeded pool.
   const fromThread = useMemo(() => {
     if (!fromThreadId) return null;
-    const all = [...WM.THREADS, ...(WM.KINDRED_THREADS || [])];
-    return all.find(t => t.id === fromThreadId) || null;
+    return getThreadById(fromThreadId);
   }, [fromThreadId]);
+
+  // The card this DOS session was "deepened" from, if launched via Go deeper.
+  // Pinned as context; saved as a find in whatever destination is chosen.
+  // `fromOwner` set when the card came from someone else (courtyard / kindred).
+  const seededFrom = useMemo(() => {
+    if (!deepenCard) return null;
+    return {
+      title: deepenCard.t || deepenCard.title || '',
+      source: deepenCard.s || deepenCard.source || '',
+      url: deepenCard.url || '',
+      mediaType: deepenCard.mediaType || '',
+      fromOwner: deepenCard.fromOwner || null,
+    };
+  }, [deepenCard]);
 
   const [prefsState, setPrefsState] = useState(loadPrefs);
   const [allMoves, setAllMoves] = useState(loadMoves);
@@ -460,7 +474,10 @@ export function SearchRoom({ navigate, fromThreadId }) {
     [prefsState.selectedMoves, allMoves]
   );
 
-  const [input, setInput] = useState(fromThread ? fromThread.q : '');
+  // Deepen-a-card opens blank — the pinned card is the context, the user
+  // brings a fresh question. A plain DOS-from-thread still prefills the
+  // thread's current question.
+  const [input, setInput] = useState(deepenCard ? '' : (fromThread ? fromThread.q : ''));
   const [submitted, setSubmitted] = useState(null);
   const [characterization, setCharacterization] = useState(null);
   const [items, setItems] = useState({}); // moveId -> item
@@ -574,6 +591,15 @@ export function SearchRoom({ navigate, fromThreadId }) {
   // DOS opened from one of your own threads → you can append this session
   // to it as a new reframe instead of spawning a brand-new thread.
   const canAppend = !!fromThread && isOwnThread(fromThread.id);
+  // A card was deepened but there's no own-thread to grow — it came from
+  // someone else (courtyard / kindred). Offer "save into one of my threads"
+  // or "new thread" instead of append/spawn.
+  const foreignDeepen = !!deepenCard && !canAppend;
+  const myThreads = useMemo(
+    () => (foreignDeepen ? getAllThreads().filter(t => isOwnThread(t.id)) : []),
+    [foreignDeepen]
+  );
+  const [destThreadId, setDestThreadId] = useState('');
 
   const orderedItems = () => selectedMoves.map(m => items[m.id]).filter(Boolean);
 
@@ -586,6 +612,7 @@ export function SearchRoom({ navigate, fromThreadId }) {
       items: orderedItems(),
       signals,
       diffMoves,
+      seededFrom,
     });
     saveThread(thread);
     if (historyId) {
@@ -602,6 +629,7 @@ export function SearchRoom({ navigate, fromThreadId }) {
       items: orderedItems(),
       signals,
       diffMoves,
+      seededFrom,
     });
     if (historyId && thread) {
       updateHistory(historyId, { savedThreadId: thread.id, signals, evolvedQ, diffMoves });
@@ -619,11 +647,30 @@ export function SearchRoom({ navigate, fromThreadId }) {
       items: orderedItems(),
       signals,
       diffMoves,
+      seededFrom,
     });
     if (historyId && thread) {
       updateHistory(historyId, { savedThreadId: thread.id, signals, evolvedQ, diffMoves });
     }
     navigate('thread', { id: thread.id });
+  };
+
+  // Foreign deepen → fold this session (and the pinned foreign card) into one
+  // of the user's existing threads as a new reframe.
+  const saveIntoThread = (destId) => {
+    if (!destId) return;
+    const thread = appendSessionToThread(destId, {
+      evolvedQ: evolvedQ || submitted,
+      moves: selectedMoves,
+      items: orderedItems(),
+      signals,
+      diffMoves,
+      seededFrom,
+    });
+    if (historyId && thread) {
+      updateHistory(historyId, { savedThreadId: thread.id, signals, evolvedQ, diffMoves });
+    }
+    navigate('thread', { id: (thread && thread.id) || destId });
   };
 
   const restoreSearch = (rec) => {
@@ -683,7 +730,7 @@ export function SearchRoom({ navigate, fromThreadId }) {
           textTransform: 'uppercase', color: '#9A968F', marginBottom: 6,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
-          <span>§03 DOS · depth of search{fromThread && <span style={{ color: '#1A5C46' }}> · from your thread</span>}</span>
+          <span>§03 DOS · depth of search{deepenCard ? <span style={{ color: '#1A5C46' }}> · going deeper</span> : fromThread && <span style={{ color: '#1A5C46' }}> · from your thread</span>}</span>
           <div style={{ display: 'flex', gap: 6 }}>
             <button onClick={() => { setHistory(loadHistory()); setHistoryOpen(true); }} style={{
               fontFamily: FONT_MONO, fontSize: 10, letterSpacing: '.14em',
@@ -703,8 +750,38 @@ export function SearchRoom({ navigate, fromThreadId }) {
           fontFamily: FONT_SERIF, fontStyle: 'italic', fontWeight: 300,
           fontSize: 36, lineHeight: 1.15, margin: '0 0 22px', color: '#1A1714',
         }}>
-          {fromThread ? 'Take your question down.' : 'Bring a question down.'}
+          {deepenCard ? 'Go deeper from here.' : fromThread ? 'Take your question down.' : 'Bring a question down.'}
         </h1>
+
+        {deepenCard && (
+          <div style={{
+            marginBottom: 20, padding: '14px 16px', borderRadius: 5,
+            background: '#FFFFFF', border: '1px solid rgba(26,92,70,.28)',
+            boxShadow: '0 2px 10px rgba(26,23,20,.05)',
+          }}>
+            <div style={{
+              fontFamily: FONT_MONO, fontSize: 9, letterSpacing: '.18em',
+              textTransform: 'uppercase', color: '#1A5C46', marginBottom: 6,
+            }}>
+              going deeper from{seededFrom?.fromOwner ? ` ${seededFrom.fromOwner}’s card` : ' this card'}
+            </div>
+            <div style={{
+              fontFamily: FONT_SERIF, fontSize: 16, fontStyle: 'italic',
+              color: '#1A1714', lineHeight: 1.3, marginBottom: 3,
+            }}>
+              {seededFrom?.title || '(untitled)'}
+            </div>
+            <div style={{ fontFamily: FONT_MONO, fontSize: 10, color: '#9A968F' }}>
+              {seededFrom?.source}
+            </div>
+            <div style={{
+              marginTop: 9, fontFamily: FONT_SERIF, fontSize: 13,
+              color: '#5E5A55', fontStyle: 'italic',
+            }}>
+              It stays pinned. Bring a fresh question — where does it take you?
+            </div>
+          </div>
+        )}
 
         <textarea ref={inputRef}
           value={input}
@@ -869,13 +946,38 @@ export function SearchRoom({ navigate, fromThreadId }) {
                     border: '1px solid rgba(125,107,80,.4)',
                   }}>Skip — spawn a thread off this</button>
                 )}
+                {foreignDeepen && myThreads.length > 0 && (
+                  <span style={{ display: 'inline-flex', gap: 6 }}>
+                    <select value={destThreadId} onChange={e => setDestThreadId(e.target.value)} style={{
+                      fontFamily: FONT_MONO, fontSize: 11, padding: '8px 10px',
+                      borderRadius: 3, border: '1px solid rgba(26,92,70,.35)',
+                      background: 'transparent', color: '#1A5C46', cursor: 'pointer',
+                    }}>
+                      <option value="">save into a thread…</option>
+                      {myThreads.map(t => (
+                        <option key={t.id} value={t.id}>
+                          {t.q.length > 44 ? t.q.slice(0, 44) + '…' : t.q}
+                        </option>
+                      ))}
+                    </select>
+                    <button onClick={() => saveIntoThread(destThreadId)} disabled={!destThreadId} style={{
+                      fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '.14em',
+                      textTransform: 'uppercase', fontWeight: 500,
+                      padding: '8px 14px', borderRadius: 3,
+                      cursor: destThreadId ? 'pointer' : 'default',
+                      background: 'transparent', color: '#1A5C46',
+                      border: '1px solid rgba(26,92,70,.35)',
+                      opacity: destThreadId ? 1 : 0.4,
+                    }}>add →</button>
+                  </span>
+                )}
                 <button onClick={saveSession} style={{
                   fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '.14em',
                   textTransform: 'uppercase', fontWeight: 500,
                   padding: '8px 16px', borderRadius: 3, cursor: 'pointer',
                   background: 'transparent', color: '#5E5A55',
                   border: '1px solid rgba(26,23,20,.18)',
-                }}>Skip — {canAppend ? 'save as new thread' : 'just save'}</button>
+                }}>Skip — {foreignDeepen ? 'save as a new thread' : canAppend ? 'save as new thread' : 'just save'}</button>
               </div>
             )}
 
@@ -924,14 +1026,38 @@ export function SearchRoom({ navigate, fromThreadId }) {
                       background: '#7d6b50', color: '#F6F3EC', border: 'none',
                     }}>Spawn a thread off this →</button>
                   )}
+                  {foreignDeepen && myThreads.length > 0 && (
+                    <span style={{ display: 'inline-flex', gap: 6 }}>
+                      <select value={destThreadId} onChange={e => setDestThreadId(e.target.value)} style={{
+                        fontFamily: FONT_MONO, fontSize: 11, padding: '9px 12px',
+                        borderRadius: 3, border: 'none',
+                        background: '#1A5C46', color: '#F6F3EC', cursor: 'pointer',
+                      }}>
+                        <option value="">save into one of my threads…</option>
+                        {myThreads.map(t => (
+                          <option key={t.id} value={t.id}>
+                            {t.q.length > 44 ? t.q.slice(0, 44) + '…' : t.q}
+                          </option>
+                        ))}
+                      </select>
+                      <button onClick={() => saveIntoThread(destThreadId)} disabled={!destThreadId} style={{
+                        fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '.14em',
+                        textTransform: 'uppercase', fontWeight: 600,
+                        padding: '9px 18px', borderRadius: 3,
+                        cursor: destThreadId ? 'pointer' : 'default',
+                        background: '#1A5C46', color: '#F6F3EC', border: 'none',
+                        opacity: destThreadId ? 1 : 0.4,
+                      }}>add →</button>
+                    </span>
+                  )}
                   <button onClick={saveSession} style={{
                     fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '.14em',
-                    textTransform: 'uppercase', fontWeight: canAppend ? 500 : 600,
+                    textTransform: 'uppercase', fontWeight: (canAppend || foreignDeepen) ? 500 : 600,
                     padding: '9px 20px', borderRadius: 3, cursor: 'pointer',
-                    background: canAppend ? 'transparent' : '#1A5C46',
-                    color: canAppend ? '#5E5A55' : '#F6F3EC',
-                    border: canAppend ? '1px solid rgba(26,23,20,.18)' : 'none',
-                  }}>{canAppend ? 'Save as new thread instead' : 'Save this session as a thread →'}</button>
+                    background: (canAppend || foreignDeepen) ? 'transparent' : '#1A5C46',
+                    color: (canAppend || foreignDeepen) ? '#5E5A55' : '#F6F3EC',
+                    border: (canAppend || foreignDeepen) ? '1px solid rgba(26,23,20,.18)' : 'none',
+                  }}>{foreignDeepen ? 'Save as a new thread instead' : canAppend ? 'Save as new thread instead' : 'Save this session as a thread →'}</button>
                 </div>
               </>
             )}

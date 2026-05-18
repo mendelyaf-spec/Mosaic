@@ -100,8 +100,29 @@ function pickPalette(characterization) {
 // Mile-markers follow Model B (reframing history). The articulation diff is
 // distributed onto the finds the user signalled as "moved" — not as
 // standalone notes.
+// A pinned find for the card a DOS session was "deepened" from. Carries
+// attribution when the card came from someone else (courtyard / kindred).
+function makeSeedFind(seededFrom, markerId, ts) {
+  return {
+    id: `f-${ts}-seed`,
+    t: seededFrom.title || '(untitled)',
+    s: seededFrom.source || '',
+    url: seededFrom.url || '',
+    i: mediaIcon(seededFrom.mediaType),
+    d: 'just now',
+    markerId,
+    mediaType: seededFrom.mediaType,
+    signal: 'moved',
+    pinnedSeed: true,
+    note: seededFrom.fromOwner
+      ? `Saved from ${seededFrom.fromOwner}. Went deeper on this here.`
+      : 'Went deeper on this here.',
+  };
+}
+
 export function buildThreadFromSession({
   originalQ, evolvedQ, characterization, moves, items, signals = {}, diffMoves = [],
+  seededFrom = null,
 }) {
   const ts = Date.now();
   const id = 't-' + ts;
@@ -151,6 +172,10 @@ export function buildThreadFromSession({
       note: diffText ? `This moved me. ${diffText}` : 'This moved me.',
     };
   });
+
+  if (seededFrom && (seededFrom.url || seededFrom.title)) {
+    fl.unshift(makeSeedFind(seededFrom, currentMarkerId, ts));
+  }
 
   return {
     id,
@@ -263,21 +288,8 @@ export function appendSessionToThread(threadId, {
 
   const newFinds = buildFinds({ items, signals, moves, diffMoves, markerId: currentMarkerId, tsBase: ts });
 
-  if (seededFrom && seededFrom.url) {
-    newFinds.unshift({
-      id: `f-${ts}-seed`,
-      t: seededFrom.title || '(untitled)',
-      s: seededFrom.source || '',
-      url: seededFrom.url || '',
-      i: mediaIcon(seededFrom.mediaType),
-      d: 'just now',
-      markerId: currentMarkerId,
-      mediaType: seededFrom.mediaType,
-      signal: 'moved',
-      note: seededFrom.fromOwner
-        ? `Saved from ${seededFrom.fromOwner}. Went deeper on this here.`
-        : 'Went deeper on this here.',
-    });
+  if (seededFrom && (seededFrom.url || seededFrom.title)) {
+    newFinds.unshift(makeSeedFind(seededFrom, currentMarkerId, ts));
   }
 
   thread.mileMarkers = markers;

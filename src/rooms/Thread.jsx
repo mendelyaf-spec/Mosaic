@@ -560,6 +560,15 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
                     background: "transparent", border: "1px solid rgba(26,23,20,.15)",
                     padding: "7px 12px", borderRadius: 3, cursor: "pointer",
                   }}>add a note on this</button>
+                  <button onClick={() => navigate("search", {
+                    from: thread.id,
+                    deepen: { t: data.t, s: data.s, url: data.url, mediaType: data.mediaType },
+                  })} style={{
+                    fontFamily: MT, fontSize: 10, letterSpacing: ".12em",
+                    textTransform: "uppercase", color: palette.accent,
+                    background: "transparent", border: `1px solid ${palette.accent}55`,
+                    padding: "7px 12px", borderRadius: 3, cursor: "pointer",
+                  }}>go deeper (DOS) →</button>
                 </div>
               </>
             )}
