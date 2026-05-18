@@ -4,6 +4,7 @@
 import React from 'react';
 import { useRoom } from './shell/shell.jsx';
 import { WM } from './data/wm-data.js';
+import { getThreadById } from './lib/threads.js';
 import { HomeRoom } from './rooms/Home.jsx';
 import { ThreadRoom } from './rooms/Thread.jsx';
 import { CourtyardRoom } from './rooms/Courtyard.jsx';
@@ -21,13 +22,11 @@ export default function MosaicApp() {
     return <HomeRoom navigate={navigate} firstUse={false} viewMode={viewMode} />;
   }
   if (room === 'thread') {
-    const all = [...WM.THREADS, ...(WM.KINDRED_THREADS || [])];
-    const thread = all.find(t => t.id === params.id) || WM.THREADS[0];
+    const thread = getThreadById(params.id) || WM.THREADS[0];
     return <ThreadRoom navigate={navigate} thread={thread} viewMode={viewMode} />;
   }
   if (room === 'courtyard') {
-    const all = [...WM.THREADS, ...(WM.KINDRED_THREADS || [])];
-    const thread = all.find(t => t.id === params.id) || WM.THREADS[0];
+    const thread = getThreadById(params.id) || WM.THREADS[0];
     return <CourtyardRoom navigate={navigate} thread={thread} viewMode={viewMode} />;
   }
   if (room === 'townhall')  return <TownHallRoom  navigate={navigate} />;

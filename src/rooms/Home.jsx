@@ -12,6 +12,7 @@ import {
   ZOOM_DEFAULT,
 } from '../shell/shell.jsx';
 import { WM } from '../data/wm-data.js';
+import { getAllThreads } from '../lib/threads.js';
 
 function ThreadCluster({ thread, pos, onOpen }) {
   const pal = WM.DOMAIN[thread.dc];
@@ -223,7 +224,7 @@ function ThreadCluster({ thread, pos, onOpen }) {
 }
 
 function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStage, openerMode }) {
-  const threads = WM.THREADS;
+  const threads = getAllThreads();
   const [zoom, setZoom] = useStateH(ZOOM_DEFAULT);
   const [viewPeriod, setViewPeriod] = useStateH("all");
   const [viewMode, setViewMode] = useStateH("spatial"); // "spatial" | "timeline"
@@ -813,15 +814,25 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
             });
           })()}
           <style>{`@keyframes wmArtIn{from{opacity:0;transform:translate(-50%,-50%) scale(.9)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}`}</style>
-          {threads.map(t => {
+          {threads.map((t, ti) => {
             const a = activity[t.id] ?? 1;
+            // Seeded threads have a hand-tuned position per period; user-created
+            // threads fall back to a deterministic grid below the seed cluster.
+            const seedPos = layout[t.id];
+            const pos = seedPos || (() => {
+              const userIdx = threads.filter(x => !layout[x.id])
+                                     .findIndex(x => x.id === t.id);
+              const col = userIdx % 3;
+              const row = Math.floor(userIdx / 3);
+              return { x: 360 + col * 460, y: 1320 + row * 360 };
+            })();
             return (
               <div key={t.id} style={{
                 opacity: a < 0.3 ? 0.28 : a < 0.7 ? 0.6 : 1,
                 filter: a < 0.3 ? "saturate(.4)" : a < 0.7 ? "saturate(.75)" : "none",
                 transition: "opacity .4s, filter .4s",
               }}>
-                <ThreadCluster thread={t} pos={layout[t.id]}
+                <ThreadCluster thread={t} pos={pos}
                   onOpen={th => navigate("thread", { id: th.id })} />
               </div>
             );

@@ -10,8 +10,9 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Aperture, Breadcrumb, FONT_SERIF, FONT_SANS, FONT_MONO } from '../shell/shell.jsx';
-import { characterize, runFeedFill } from '../lib/mosaicEngine.js';
+import { characterize, runFeedFill, articulationDiff } from '../lib/mosaicEngine.js';
 import { loadMoves, loadPrefs, savePrefs, saveUserMove, TIME_OPTIONS } from '../lib/moves.js';
+import { buildThreadFromSession, saveThread } from '../lib/threads.js';
 import { WM } from '../data/wm-data.js';
 
 function timeChipLabel(mins) {
@@ -31,17 +32,49 @@ function timeChipColor(mins) {
   return { ink: '#3A2D86', soft: '#EDE8F8' };
 }
 
-function MoveCard({ move, item, loading }) {
+function SignalBar({ value, onChange }) {
+  const opts = [
+    { v: 'dismiss', label: 'not for me', glyph: '×' },
+    { v: 'moved',   label: 'moved me',   glyph: '✦' },
+  ];
+  return (
+    <div style={{ display: 'flex', gap: 6, marginTop: 10, paddingTop: 10,
+      borderTop: '1px dashed rgba(26,23,20,.08)' }}>
+      {opts.map(o => {
+        const active = value === o.v;
+        const isMoved = o.v === 'moved';
+        return (
+          <button key={o.v}
+            onClick={() => onChange(active ? null : o.v)}
+            style={{
+              fontFamily: FONT_MONO, fontSize: 10, letterSpacing: '.1em',
+              textTransform: 'uppercase', fontWeight: 600,
+              padding: '5px 11px', borderRadius: 3, cursor: 'pointer',
+              border: `1px solid ${active ? (isMoved ? '#1A5C46' : '#8C3A4F') : 'rgba(26,23,20,.15)'}`,
+              background: active ? (isMoved ? '#E3EEE9' : '#F5E4E8') : 'transparent',
+              color: active ? (isMoved ? '#1A5C46' : '#8C3A4F') : '#7A756F',
+            }}>
+            <span style={{ marginRight: 5 }}>{o.glyph}</span>{o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function MoveCard({ move, item, loading, signal, onSignal }) {
   const accent = '#1A5C46';
   return (
     <div style={{
       background: '#FFFFFF',
-      border: '1px solid rgba(26,23,20,.08)',
+      border: `1px solid ${signal === 'moved' ? 'rgba(26,92,70,.5)' : signal === 'dismiss' ? 'rgba(26,23,20,.06)' : 'rgba(26,23,20,.08)'}`,
       borderRadius: 6,
       padding: '16px 18px',
-      boxShadow: '0 1px 8px rgba(26,23,20,.04)',
-      opacity: loading ? 0.6 : 1,
-      transition: 'opacity .2s',
+      boxShadow: signal === 'moved'
+        ? '0 2px 14px rgba(26,92,70,.14)'
+        : '0 1px 8px rgba(26,23,20,.04)',
+      opacity: loading ? 0.6 : signal === 'dismiss' ? 0.55 : 1,
+      transition: 'opacity .2s, box-shadow .2s, border-color .2s',
     }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10,
@@ -115,6 +148,9 @@ function MoveCard({ move, item, loading }) {
               fontFamily: FONT_MONO, fontSize: 10, color: '#8C3A4F',
               letterSpacing: '.08em',
             }}>This slot failed three attempts. Try a different question or move.</div>
+          )}
+          {!item.failed && onSignal && (
+            <SignalBar value={signal} onChange={onSignal} />
           )}
         </>
       )}
@@ -331,11 +367,21 @@ export function SearchRoom({ navigate, fromThreadId }) {
   const [characterization, setCharacterization] = useState(null);
   const [items, setItems] = useState({}); // moveId -> item
   const [loadingMoves, setLoadingMoves] = useState({});
-  const [phase, setPhase] = useState('idle'); // idle | characterizing | filling | done | error
+  // idle | characterizing | filling | done | reviewing | diffing | diffed | error
+  const [phase, setPhase] = useState('idle');
   const [error, setError] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [signals, setSignals] = useState({});   // moveId -> 'moved' | 'dismiss' | null
+  const [evolvedQ, setEvolvedQ] = useState('');
+  const [diffMoves, setDiffMoves] = useState([]);
   const inputRef = useRef(null);
   useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const onSignal = (moveId, val) =>
+    setSignals(prev => ({ ...prev, [moveId]: val }));
+
+  const movedCount = Object.values(signals).filter(v => v === 'moved').length;
+  const signalledCount = Object.values(signals).filter(Boolean).length;
 
   const onCoinMove = (m) => {
     const saved = saveUserMove(m);
@@ -347,6 +393,9 @@ export function SearchRoom({ navigate, fromThreadId }) {
     if (!text.trim() || selectedMoves.length === 0) return;
     setSubmitted(text);
     setItems({});
+    setSignals({});
+    setEvolvedQ('');
+    setDiffMoves([]);
     setLoadingMoves(Object.fromEntries(selectedMoves.map(m => [m.id, true])));
     setPhase('characterizing');
     setError(null);
@@ -374,6 +423,50 @@ export function SearchRoom({ navigate, fromThreadId }) {
       setLoadingMoves({});
     }
   };
+
+  const goReview = () => {
+    setEvolvedQ(submitted || input);
+    setPhase('reviewing');
+  };
+
+  const runDiff = async () => {
+    setPhase('diffing');
+    setError(null);
+    try {
+      const sharpenedBy = selectedMoves
+        .filter(m => signals[m.id] === 'moved')
+        .map(m => {
+          const it = items[m.id];
+          return `${m.label}: ${it?.title || ''}`;
+        });
+      const moves = await articulationDiff(submitted, evolvedQ, sharpenedBy);
+      setDiffMoves(moves);
+      setPhase('diffed');
+    } catch (e) {
+      console.error(e);
+      setError(e.message || String(e));
+      setPhase('diffed'); // still let them save; diff is best-effort
+    }
+  };
+
+  const saveSession = () => {
+    const orderedItems = selectedMoves
+      .map(m => items[m.id])
+      .filter(Boolean);
+    const thread = buildThreadFromSession({
+      originalQ: submitted,
+      evolvedQ,
+      characterization,
+      moves: selectedMoves,
+      items: orderedItems,
+      signals,
+      diffMoves,
+    });
+    saveThread(thread);
+    navigate('thread', { id: thread.id });
+  };
+
+  const busy = phase === 'characterizing' || phase === 'filling' || phase === 'diffing';
 
   return (
     <div style={{
@@ -487,9 +580,128 @@ export function SearchRoom({ navigate, fromThreadId }) {
           {selectedMoves.map(m => (
             <MoveCard key={m.id} move={m}
               item={items[m.id]}
-              loading={!!loadingMoves[m.id]} />
+              loading={!!loadingMoves[m.id]}
+              signal={signals[m.id] || null}
+              onSignal={
+                (phase === 'done' || phase === 'reviewing')
+                  ? (v) => onSignal(m.id, v)
+                  : null
+              } />
           ))}
         </div>
+
+        {/* ---- after results: review / diff / save ---- */}
+        {phase === 'done' && (
+          <div style={{
+            marginTop: 22, padding: '16px 18px', borderRadius: 6,
+            background: 'rgba(255,255,255,.6)', border: '1px solid rgba(26,23,20,.08)',
+          }}>
+            <div style={{ fontFamily: FONT_SANS, fontSize: 13, color: '#5E5A55', marginBottom: 12 }}>
+              Mark what landed. {signalledCount > 0
+                ? `${movedCount} moved you, ${signalledCount - movedCount} dismissed.`
+                : 'Tap “moved me” or “not for me” on the cards above — or skip straight to review.'}
+            </div>
+            <button onClick={goReview} style={{
+              fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '.14em',
+              textTransform: 'uppercase', fontWeight: 600,
+              padding: '8px 18px', borderRadius: 3, cursor: 'pointer',
+              background: '#1A5C46', color: '#F6F3EC', border: 'none',
+            }}>Review →</button>
+          </div>
+        )}
+
+        {(phase === 'reviewing' || phase === 'diffing' || phase === 'diffed') && (
+          <div style={{
+            marginTop: 22, padding: '20px 22px', borderRadius: 6,
+            background: '#FBF8F0', border: '1px solid rgba(26,23,20,.1)',
+          }}>
+            <div style={{
+              fontFamily: FONT_MONO, fontSize: 9, letterSpacing: '.16em',
+              textTransform: 'uppercase', color: '#9A968F', marginBottom: 8,
+            }}>you opened with</div>
+            <div style={{
+              fontFamily: FONT_SERIF, fontStyle: 'italic', fontWeight: 300,
+              fontSize: 18, color: '#5E5A55', marginBottom: 18, lineHeight: 1.35,
+            }}>“{submitted}”</div>
+
+            <div style={{
+              fontFamily: FONT_MONO, fontSize: 9, letterSpacing: '.16em',
+              textTransform: 'uppercase', color: '#9A968F', marginBottom: 8,
+            }}>after reading, your question is</div>
+            <textarea
+              value={evolvedQ}
+              onChange={e => setEvolvedQ(e.target.value)}
+              rows={3}
+              disabled={phase === 'diffing'}
+              style={{
+                width: '100%', fontFamily: FONT_SERIF, fontSize: 19, fontStyle: 'italic',
+                fontWeight: 300, color: '#1A1714', lineHeight: 1.4,
+                background: '#FFFFFF', border: '1px solid rgba(26,23,20,.15)',
+                borderRadius: 6, padding: '12px 14px', resize: 'vertical',
+                marginBottom: 14,
+              }} />
+
+            {phase !== 'diffed' && (
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button onClick={runDiff} disabled={phase === 'diffing' || !evolvedQ.trim()}
+                  style={{
+                    fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '.14em',
+                    textTransform: 'uppercase', fontWeight: 600,
+                    padding: '8px 18px', borderRadius: 3, cursor: 'pointer',
+                    background: '#1A5C46', color: '#F6F3EC', border: 'none',
+                    opacity: (phase === 'diffing' || !evolvedQ.trim()) ? 0.4 : 1,
+                  }}>
+                  {phase === 'diffing' ? 'Reading the shift…' : 'See what moved →'}
+                </button>
+                <button onClick={saveSession} style={{
+                  fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '.14em',
+                  textTransform: 'uppercase', fontWeight: 500,
+                  padding: '8px 16px', borderRadius: 3, cursor: 'pointer',
+                  background: 'transparent', color: '#5E5A55',
+                  border: '1px solid rgba(26,23,20,.18)',
+                }}>Skip — just save</button>
+              </div>
+            )}
+
+            {phase === 'diffed' && (
+              <>
+                <div style={{
+                  fontFamily: FONT_MONO, fontSize: 9, letterSpacing: '.16em',
+                  textTransform: 'uppercase', color: '#9A968F',
+                  margin: '6px 0 10px',
+                }}>what moved</div>
+                {diffMoves.length === 0 && (
+                  <div style={{
+                    fontFamily: FONT_SANS, fontSize: 13, color: '#7A756F',
+                    fontStyle: 'italic', marginBottom: 16,
+                  }}>The articulation barely changed — that's a finding too.</div>
+                )}
+                {diffMoves.map((d, i) => (
+                  <div key={i} style={{
+                    marginBottom: 12, paddingLeft: 14,
+                    borderLeft: '2px solid rgba(26,92,70,.4)',
+                  }}>
+                    <div style={{
+                      fontFamily: FONT_MONO, fontSize: 10, letterSpacing: '.1em',
+                      textTransform: 'uppercase', color: '#1A5C46', fontWeight: 600,
+                      marginBottom: 3,
+                    }}>{d.label}</div>
+                    <div style={{
+                      fontFamily: FONT_SANS, fontSize: 13, lineHeight: 1.5, color: '#3A3530',
+                    }}>{d.content}</div>
+                  </div>
+                ))}
+                <button onClick={saveSession} style={{
+                  marginTop: 8,
+                  fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '.14em',
+                  textTransform: 'uppercase', fontWeight: 600,
+                  padding: '9px 20px', borderRadius: 3, cursor: 'pointer',
+                  background: '#1A5C46', color: '#F6F3EC', border: 'none',
+                }}>Save this session as a thread →</button>
+              </>
+            )}
+          </div>
+        )}
 
         {error && (
           <div style={{
