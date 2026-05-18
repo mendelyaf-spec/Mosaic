@@ -12,7 +12,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Aperture, Breadcrumb, FONT_SERIF, FONT_SANS, FONT_MONO } from '../shell/shell.jsx';
 import { characterize, runFeedFill, articulationDiff } from '../lib/mosaicEngine.js';
 import { loadMoves, loadPrefs, savePrefs, saveUserMove, TIME_OPTIONS } from '../lib/moves.js';
-import { buildThreadFromSession, saveThread, appendSessionToThread, isOwnThread } from '../lib/threads.js';
+import { buildThreadFromSession, saveThread, appendSessionToThread, spawnThreadFromSession, isOwnThread } from '../lib/threads.js';
 import { loadHistory, recordSearch, updateHistory, deleteHistory, clearHistory, relativeTime } from '../lib/searchHistory.js';
 import { WM } from '../data/wm-data.js';
 
@@ -609,6 +609,23 @@ export function SearchRoom({ navigate, fromThreadId }) {
     navigate('thread', { id: (thread && thread.id) || fromThread.id });
   };
 
+  const spawnSession = () => {
+    if (!fromThread) return;
+    const thread = spawnThreadFromSession(fromThread.id, {
+      originalQ: submitted,
+      evolvedQ,
+      characterization,
+      moves: selectedMoves,
+      items: orderedItems(),
+      signals,
+      diffMoves,
+    });
+    if (historyId && thread) {
+      updateHistory(historyId, { savedThreadId: thread.id, signals, evolvedQ, diffMoves });
+    }
+    navigate('thread', { id: thread.id });
+  };
+
   const restoreSearch = (rec) => {
     setPrefs({ selectedMoves: rec.moveIds, maxTimePerItem: rec.maxTimePerItem });
     setSubmitted(rec.question);
@@ -843,6 +860,15 @@ export function SearchRoom({ navigate, fromThreadId }) {
                     border: '1px solid rgba(26,92,70,.35)',
                   }}>Skip — append to this thread</button>
                 )}
+                {canAppend && (
+                  <button onClick={spawnSession} style={{
+                    fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '.14em',
+                    textTransform: 'uppercase', fontWeight: 500,
+                    padding: '8px 16px', borderRadius: 3, cursor: 'pointer',
+                    background: 'transparent', color: '#7d6b50',
+                    border: '1px solid rgba(125,107,80,.4)',
+                  }}>Skip — spawn a thread off this</button>
+                )}
                 <button onClick={saveSession} style={{
                   fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '.14em',
                   textTransform: 'uppercase', fontWeight: 500,
@@ -889,6 +915,14 @@ export function SearchRoom({ navigate, fromThreadId }) {
                       padding: '9px 20px', borderRadius: 3, cursor: 'pointer',
                       background: '#1A5C46', color: '#F6F3EC', border: 'none',
                     }}>Append to “{fromThread.q.length > 32 ? fromThread.q.slice(0, 32) + '…' : fromThread.q}” →</button>
+                  )}
+                  {canAppend && (
+                    <button onClick={spawnSession} style={{
+                      fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '.14em',
+                      textTransform: 'uppercase', fontWeight: 600,
+                      padding: '9px 20px', borderRadius: 3, cursor: 'pointer',
+                      background: '#7d6b50', color: '#F6F3EC', border: 'none',
+                    }}>Spawn a thread off this →</button>
                   )}
                   <button onClick={saveSession} style={{
                     fontFamily: FONT_MONO, fontSize: 11, letterSpacing: '.14em',

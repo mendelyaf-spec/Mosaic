@@ -172,6 +172,36 @@ export function buildThreadFromSession({
   };
 }
 
+// Spawn a NEW thread off a parent (the inquiry forked, not continued). Unlike
+// append (same thread grows) and save-as-new (orphan), a spawn is its own
+// thread that records lineage back to the parent: it shows as "newly spawned"
+// on Home and carries spawnedFrom / parent / root ids. The parent is left
+// untouched. Mirrors the persona model (wm-data t-grief) and the legacy
+// EngineApp spawnContext.
+//
+//   parentThreadId   id of the thread this forked from
+//   session          same shape as buildThreadFromSession
+//   reason           optional human note for why it split off
+export function spawnThreadFromSession(parentThreadId, session, reason = '') {
+  const parent = getThreadById(parentThreadId);
+  const base = buildThreadFromSession(session);
+  const rootId = (parent && (parent.rootThreadId || parent.id)) || parentThreadId;
+  const parentQ = (parent && parent.q) || '';
+  const why = reason
+    || (parentQ
+        ? `split off from “${parentQ.length > 56 ? parentQ.slice(0, 56) + '…' : parentQ}”`
+        : 'split off from a deeper look');
+  const spawned = {
+    ...base,
+    state: 'spawned',
+    spawnedFrom: { id: parentThreadId, at: 'just now', reason: why },
+    parentThreadId,
+    rootThreadId: rootId,
+  };
+  saveThread(spawned);
+  return spawned;
+}
+
 // Build find objects for a session, tethered to a given marker id.
 function buildFinds({ items, signals = {}, moves = [], diffMoves = [], markerId, tsBase }) {
   const diffText = (diffMoves || [])
