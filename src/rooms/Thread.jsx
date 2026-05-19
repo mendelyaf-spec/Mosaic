@@ -14,7 +14,7 @@ import {
   FONT_MONO as MT,
 } from '../shell/shell.jsx';
 import { WM } from '../data/wm-data.js';
-import { isOwnThread } from '../lib/threads.js';
+import { isOwnThread, setFindNote } from '../lib/threads.js';
 
 // One mile-marker pin on the river
 function MileMarker({ mm, x, y, isCurrent, palette }) {
@@ -328,6 +328,8 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
   // Active-card overlay — opens when a find or note is clicked. Carries the
   // user from "I see this exists" to "I'm reading it".
   const [activeCard, setActiveCard] = useStateT(null); // {kind:'find'|'note', data}
+  const [noteDraft, setNoteDraft] = useStateT(null); // string while editing a find's note, else null
+  const canEdit = isOwnThread(thread.id); // can't annotate someone else's thread
 
   // Orbital layout — title card at center; mile-markers on an inner arc
   // running older→newer along the top half; finds in the upper outer ring,
@@ -414,6 +416,30 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
     />
   );
 
+  // Whose thread this is — top-right, mirroring Home's identity card.
+  // Maya's own threads carry no owner field; kindred threads (walked into
+  // from the courtyard) carry the holder's name.
+  const ownerLabel = thread.owner || "Maya R.";
+  const identityCard = (
+    <div data-ui style={{
+      position: "fixed", top: 24, right: 28, zIndex: 20,
+      maxWidth: 260, textAlign: "right",
+    }}>
+      <div style={{
+        fontSize: 9.5, letterSpacing: ".15em", textTransform: "uppercase",
+        color: "#9A968F", marginBottom: 4,
+      }}>Mosaic · Hawley, PA</div>
+      <h1 style={{
+        fontFamily: ST, fontSize: 26, fontStyle: "italic", fontWeight: 300,
+        margin: 0, lineHeight: 1, color: "#1A1714", letterSpacing: "-.01em",
+      }}>{ownerLabel}</h1>
+      <p style={{
+        fontSize: 11.5, color: "#5E5A55", fontWeight: 300, margin: "6px 0 0",
+        lineHeight: 1.4,
+      }}>{isOwnThread(thread.id) ? "your thread" : `${ownerLabel}’s thread · you can read it, not edit it`}</p>
+    </div>
+  );
+
   // View-mode toggle — top-left, mirrors home's chrome
   const viewToggle = (
     <div data-ui style={{
@@ -458,7 +484,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
   const cardOverlay = (() => {
     if (!activeCard) return null;
     const { kind, data } = activeCard;
-    const close = () => setActiveCard(null);
+    const close = () => { setActiveCard(null); setNoteDraft(null); };
     return (
       <>
         <div data-ui style={{
@@ -549,18 +575,30 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
                 <div style={{
                   marginTop: 22, display: "flex", gap: 10, flexWrap: "wrap",
                 }}>
-                  <button style={{
-                    fontFamily: MT, fontSize: 10, letterSpacing: ".12em",
-                    textTransform: "uppercase", color: palette.accent,
-                    background: palette.soft, border: `1px solid ${palette.accent}44`,
-                    padding: "7px 12px", borderRadius: 3, cursor: "pointer",
-                  }}>open the source →</button>
-                  <button style={{
-                    fontFamily: MT, fontSize: 10, letterSpacing: ".12em",
-                    textTransform: "uppercase", color: "#5E5A55",
-                    background: "transparent", border: "1px solid rgba(26,23,20,.15)",
-                    padding: "7px 12px", borderRadius: 3, cursor: "pointer",
-                  }}>add a note on this</button>
+                  <button
+                    onClick={data.url ? () => window.open(data.url, "_blank", "noopener,noreferrer") : undefined}
+                    disabled={!data.url}
+                    title={data.url ? data.url : "No link held for this find"}
+                    style={{
+                      fontFamily: MT, fontSize: 10, letterSpacing: ".12em",
+                      textTransform: "uppercase", color: palette.accent,
+                      background: palette.soft, border: `1px solid ${palette.accent}44`,
+                      padding: "7px 12px", borderRadius: 3,
+                      cursor: data.url ? "pointer" : "default",
+                      opacity: data.url ? 1 : 0.4,
+                    }}>open the source →</button>
+                  <button
+                    onClick={canEdit ? () => setNoteDraft(data.note || "") : undefined}
+                    disabled={!canEdit}
+                    title={canEdit ? "" : `This is ${thread.owner || "someone else"}'s thread — you can read it, not annotate it`}
+                    style={{
+                      fontFamily: MT, fontSize: 10, letterSpacing: ".12em",
+                      textTransform: "uppercase", color: "#5E5A55",
+                      background: "transparent", border: "1px solid rgba(26,23,20,.15)",
+                      padding: "7px 12px", borderRadius: 3,
+                      cursor: canEdit ? "pointer" : "default",
+                      opacity: canEdit ? 1 : 0.4,
+                    }}>{data.note ? "edit your note" : "add a note on this"}</button>
                   <button onClick={() => navigate("search", {
                     from: thread.id,
                     // JSON-encoded: the hash router stringifies object params.
@@ -577,6 +615,44 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
                     padding: "7px 12px", borderRadius: 3, cursor: "pointer",
                   }}>go deeper (DOS) →</button>
                 </div>
+                {noteDraft !== null && (
+                  <div style={{ marginTop: 16 }}>
+                    <textarea
+                      autoFocus
+                      value={noteDraft}
+                      onChange={(e) => setNoteDraft(e.target.value)}
+                      placeholder="What does this find do for the question? Why it moved you, what it changed…"
+                      style={{
+                        width: "100%", minHeight: 90, boxSizing: "border-box",
+                        fontFamily: ST, fontSize: 14, lineHeight: 1.5,
+                        color: "#3A3530", background: "#FFFFFF",
+                        border: `1px dashed ${palette.accent}66`, borderRadius: 4,
+                        padding: "12px 14px", resize: "vertical",
+                      }} />
+                    <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
+                      <button
+                        onClick={() => {
+                          const res = setFindNote(thread.id, data, noteDraft);
+                          if (res) setActiveCard({ kind: "find", data: { ...data, note: res.find.note } });
+                          setNoteDraft(null);
+                        }}
+                        style={{
+                          fontFamily: MT, fontSize: 10, letterSpacing: ".12em",
+                          textTransform: "uppercase", color: "#FAF5E9",
+                          background: palette.accent, border: "none",
+                          padding: "7px 14px", borderRadius: 3, cursor: "pointer",
+                        }}>save note</button>
+                      <button
+                        onClick={() => setNoteDraft(null)}
+                        style={{
+                          fontFamily: MT, fontSize: 10, letterSpacing: ".12em",
+                          textTransform: "uppercase", color: "#5E5A55",
+                          background: "transparent", border: "1px solid rgba(26,23,20,.15)",
+                          padding: "7px 14px", borderRadius: 3, cursor: "pointer",
+                        }}>cancel</button>
+                    </div>
+                  </div>
+                )}
               </>
             )}
 
@@ -804,6 +880,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
                   }} />
                   {/* label */}
                   <div onClick={() => {
+                    setNoteDraft(null);
                     if (art.kind === "find") setActiveCard({ kind: "find", data: art.data });
                     if (art.kind === "note") setActiveCard({ kind: "note", data: art.data });
                   }} style={{
@@ -897,6 +974,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
           />
           {apertures.map((a, i) => <ApT key={i} {...a} />)}
           {breadcrumb}
+          {identityCard}
           {viewToggle}
           {cardOverlay}
           {/* Requests / incoming / outgoing live in the Courtyard now —
@@ -1001,7 +1079,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
               transition: "opacity .25s ease",
             }}>
               <FindCard find={F.f} x={F.x} y={F.y} palette={palette}
-                onOpen={() => setActiveCard({ kind: "find", data: F.f })}
+                onOpen={() => { setNoteDraft(null); setActiveCard({ kind: "find", data: F.f }); }}
                 onShared={() => navigate("courtyard", { id: thread.id })} />
             </div>
           ))}
@@ -1013,7 +1091,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
               transition: "opacity .25s ease",
             }}>
               <NoteCard note={N.n} x={N.x} y={N.y} palette={palette}
-                onOpen={() => setActiveCard({ kind: "note", data: N.n })}
+                onOpen={() => { setNoteDraft(null); setActiveCard({ kind: "note", data: N.n }); }}
                 onShared={() => navigate("courtyard", { id: thread.id })} />
             </div>
           ))}

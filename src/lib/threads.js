@@ -50,6 +50,31 @@ export function isOwnThread(id) {
   return false; // KINDRED_THREADS are other people's
 }
 
+// Set (or clear) the annotation on one find within a thread. Persists via
+// saveThread — for a seeded Maya thread this writes a user-storage copy that
+// overrides the seed (same pattern as appendSessionToThread). Caller must
+// gate on isOwnThread: you can't annotate someone else's thread.
+//
+// Seeded finds have no stable id, so we match by id when present, else by
+// the title+source+date triple the find actually carries.
+export function setFindNote(threadId, find, note) {
+  const existing = getThreadById(threadId);
+  if (!existing) return null;
+  const thread = JSON.parse(JSON.stringify(existing));
+  const match = (f) =>
+    (find.id && f.id && f.id === find.id) ||
+    (!find.id && f.t === find.t && f.s === find.s && f.d === find.d);
+  const target = (thread.fl || []).find(match);
+  if (!target) return null;
+  const trimmed = (note || '').trim();
+  if (trimmed) target.note = trimmed;
+  else delete target.note;
+  thread.notes = (thread.fl || []).filter(f => f.note).length;
+  thread._userCreated = true;
+  saveThread(thread);
+  return { thread, find: target };
+}
+
 // Map an engine mediaType to the single-glyph icon the design's FindCard
 // renders in `find.i`.
 function mediaIcon(mediaType) {
