@@ -416,14 +416,6 @@ function CourtyardRoomImpl({ navigate, thread, viewMode = "maya" }) {
                       fontSize: 22, lineHeight: 1.22, color: "#1A1714",
                       margin: "0 0 18px", textWrap: "balance",
                     }}>"{detail.q}"</p>
-                    <p style={{
-                      fontFamily: FC, fontSize: 13, color: "#5E5A55",
-                      lineHeight: 1.5, margin: "0 0 22px",
-                    }}>You're in the same courtyard because your questions touch.
-                    Anything either of you saves here becomes available to the other.
-                    Their thread is open to read — step into it from the courtyard.
-                    You just can't edit it: their inquiry is theirs to grow, yours
-                    is yours.</p>
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                       <button style={{
                         fontFamily: MC, fontSize: 10, letterSpacing: ".12em",
