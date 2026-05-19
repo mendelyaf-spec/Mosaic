@@ -347,7 +347,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
   // notes in the lower outer ring.
   const cx = 1600, cy = 1000;
   const rInner = 360;   // mile-marker arc radius
-  const rOuter = 640;   // items ring radius
+  const rOuter = 760;   // items ring radius — kept clear of the marker arc
 
   const markerCount = thread.mileMarkers.length;
   // Arc sweep from upper-left (older) around the top to upper-right (newer).
@@ -375,7 +375,9 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
     // Spread across upper 240° arc, with a small wobble
     const baseTheta = Math.PI + 0.2 + t * (Math.PI * 2 - 0.4 - Math.PI);
     const theta = baseTheta + ((i % 3) - 1) * 0.08;
-    const r = rOuter + ((i % 3) - 1) * 40;
+    // Outward-only radial wobble so a find never pulls inward toward the
+    // mile-marker arc (that collision hid markers behind the find card).
+    const r = rOuter + (i % 3) * 36;
     return {
       f, days: ageToDays(f.d),
       x: cx + Math.cos(theta) * r,
