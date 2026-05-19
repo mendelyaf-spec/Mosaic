@@ -75,6 +75,29 @@ export function setFindNote(threadId, find, note) {
   return { thread, find: target };
 }
 
+// Directly pin an item into one of YOUR threads as a find — no DOS run, no
+// reframe. This is the one-click "save this to my thread": appending a find
+// to an ongoing inquiry needs no new question. (Making the item its OWN
+// thread would need a question — that's what "go deeper" is for.)
+//
+//   threadId   destination thread (must be your own — gate with isOwnThread)
+//   item       { title, source, url, mediaType, fromOwner }
+export function addFindToThread(threadId, item) {
+  const existing = getThreadById(threadId);
+  if (!existing) return null;
+  const thread = JSON.parse(JSON.stringify(existing));
+  const markers = thread.mileMarkers || [];
+  const markerId = markers.length ? markers[markers.length - 1].id : undefined;
+  const find = makeSeedFind(item, markerId, Date.now());
+  thread.fl = [...(thread.fl || []), find];
+  thread.last = 'just now';
+  thread.finds = thread.fl.length;
+  thread.notes = thread.fl.filter(f => f.note).length;
+  thread._userCreated = true;
+  saveThread(thread);
+  return { thread, find };
+}
+
 // Map an engine mediaType to the single-glyph icon the design's FindCard
 // renders in `find.i`.
 function mediaIcon(mediaType) {

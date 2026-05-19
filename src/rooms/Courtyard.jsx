@@ -19,6 +19,7 @@ import {
   FONT_MONO as MC,
 } from '../shell/shell.jsx';
 import { WM } from '../data/wm-data.js';
+import { addFindToThread, getAllThreads, isOwnThread } from '../lib/threads.js';
 
 // ─── Bordered thread (frame around one orbit) ─────────────────────────
 function BorderedThread({ thread, owner, cx, cy, w = 260, h = 230, openSide = "right", accent, onClick, isMine }) {
@@ -279,6 +280,8 @@ function CourtyardRoomImpl({ navigate, thread, viewMode = "maya" }) {
   const courtyardName = thread.courtyardName || thread.domain;
   const kindred = thread.kindred || [];
   const [detail, setDetail] = useStateC(null); // { kind, title, byList, who, q }
+  const [savedMsg, setSavedMsg] = useStateC(null); // confirmation after saving a shared item into a thread
+  const myThreads = getAllThreads().filter(t => isOwnThread(t.id));
 
   // Daisy geometry — elliptical (wider than tall) so 5 rooms + the
   // activity dock + the top eyebrow all fit a typical laptop viewport.
@@ -386,7 +389,7 @@ function CourtyardRoomImpl({ navigate, thread, viewMode = "maya" }) {
           <ActivityDock thread={thread} navigate={navigate} />
           {detail && (
             <>
-              <div data-ui onClick={() => setDetail(null)} style={{
+              <div data-ui onClick={() => { setDetail(null); setSavedMsg(null); }} style={{
                 position: "fixed", inset: 0, zIndex: 60,
                 background: "rgba(31,28,23,0.45)", backdropFilter: "blur(2px)",
               }} />
@@ -398,7 +401,7 @@ function CourtyardRoomImpl({ navigate, thread, viewMode = "maya" }) {
                 boxShadow: "0 30px 80px -20px rgba(40,30,15,0.6)",
                 padding: "30px 34px 32px",
               }}>
-                <button onClick={() => setDetail(null)} style={{
+                <button onClick={() => { setDetail(null); setSavedMsg(null); }} style={{
                   position: "absolute", top: 14, right: 14,
                   background: "transparent", border: "none",
                   fontFamily: MC, fontSize: 10, letterSpacing: ".14em",
@@ -463,12 +466,36 @@ function CourtyardRoomImpl({ navigate, thread, viewMode = "maya" }) {
                         background: detail.accent, border: "none",
                         padding: "8px 14px", borderRadius: 3, cursor: "pointer",
                       }}>open the {detail.kind} →</button>
-                      <button style={{
-                        fontFamily: MC, fontSize: 10, letterSpacing: ".12em",
-                        textTransform: "uppercase", color: "#5E5A55",
-                        background: "transparent", border: "1px solid rgba(26,23,20,.15)",
-                        padding: "8px 14px", borderRadius: 3, cursor: "pointer",
-                      }}>add to my thread</button>
+                      <select
+                        defaultValue=""
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          if (!id) return;
+                          const res = addFindToThread(id, {
+                            title: detail.title,
+                            source: `shared ${detail.kind}`,
+                            url: "",
+                            mediaType: detail.kind,
+                            fromOwner: (detail.byList && detail.byList.join(", ")) || detail.who || null,
+                          });
+                          if (res) {
+                            const q = res.thread.q || "your thread";
+                            setSavedMsg(`Added to “${q.length > 44 ? q.slice(0, 44) + "…" : q}”.`);
+                          }
+                        }}
+                        style={{
+                          fontFamily: MC, fontSize: 10, letterSpacing: ".06em",
+                          textTransform: "uppercase", color: "#5E5A55",
+                          background: "transparent", border: "1px solid rgba(26,23,20,.15)",
+                          padding: "8px 12px", borderRadius: 3, cursor: "pointer",
+                        }}>
+                        <option value="">add to my thread…</option>
+                        {myThreads.map(t => (
+                          <option key={t.id} value={t.id}>
+                            {t.q.length > 46 ? t.q.slice(0, 46) + "…" : t.q}
+                          </option>
+                        ))}
+                      </select>
                       <button onClick={() => navigate("search", {
                         // JSON-encoded: the hash router stringifies object params.
                         deepen: JSON.stringify({
@@ -484,6 +511,12 @@ function CourtyardRoomImpl({ navigate, thread, viewMode = "maya" }) {
                         padding: "8px 14px", borderRadius: 3, cursor: "pointer",
                       }}>go deeper (DOS) →</button>
                     </div>
+                    {savedMsg && (
+                      <div style={{
+                        marginTop: 14, fontFamily: SC, fontSize: 13.5,
+                        fontStyle: "italic", color: detail.accent,
+                      }}>{savedMsg} It’s pinned in that thread now.</div>
+                    )}
                   </>
                 )}
               </div>
@@ -542,7 +575,7 @@ function CourtyardRoomImpl({ navigate, thread, viewMode = "maya" }) {
             <SharedItem key={i} x={cx + it.dx} y={cy + it.dy}
                         kind={it.kind} title={it.title}
                         byList={it.byList} accent={it.accent}
-                        onClick={() => setDetail({ kind: it.kind, title: it.title, byList: it.byList, accent: it.accent })} />
+                        onClick={() => { setSavedMsg(null); setDetail({ kind: it.kind, title: it.title, byList: it.byList, accent: it.accent }); }} />
           ))}
         </>
       )}

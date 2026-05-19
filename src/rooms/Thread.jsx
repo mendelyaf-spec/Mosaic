@@ -14,7 +14,7 @@ import {
   FONT_MONO as MT,
 } from '../shell/shell.jsx';
 import { WM } from '../data/wm-data.js';
-import { isOwnThread, setFindNote } from '../lib/threads.js';
+import { isOwnThread, setFindNote, addFindToThread, getAllThreads } from '../lib/threads.js';
 
 // One mile-marker pin on the river
 function MileMarker({ mm, x, y, isCurrent, palette }) {
@@ -329,7 +329,9 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
   // user from "I see this exists" to "I'm reading it".
   const [activeCard, setActiveCard] = useStateT(null); // {kind:'find'|'note', data}
   const [noteDraft, setNoteDraft] = useStateT(null); // string while editing a find's note, else null
+  const [savedMsg, setSavedMsg] = useStateT(null);   // confirmation after saving a foreign find into one of my threads
   const canEdit = isOwnThread(thread.id); // can't annotate someone else's thread
+  const myThreads = getAllThreads().filter(t => isOwnThread(t.id));
 
   // Orbital layout — title card at center; mile-markers on an inner arc
   // running older→newer along the top half; finds in the upper outer ring,
@@ -484,7 +486,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
   const cardOverlay = (() => {
     if (!activeCard) return null;
     const { kind, data } = activeCard;
-    const close = () => { setActiveCard(null); setNoteDraft(null); };
+    const close = () => { setActiveCard(null); setNoteDraft(null); setSavedMsg(null); };
     return (
       <>
         <div data-ui style={{
@@ -615,6 +617,56 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
                     padding: "7px 12px", borderRadius: 3, cursor: "pointer",
                   }}>go deeper (DOS) →</button>
                 </div>
+                {!canEdit && (
+                  <div style={{
+                    marginTop: 16, paddingTop: 16,
+                    borderTop: "1px solid rgba(26,23,20,.1)",
+                  }}>
+                    {savedMsg ? (
+                      <div style={{
+                        fontFamily: ST, fontSize: 13.5, fontStyle: "italic",
+                        color: palette.accent,
+                      }}>{savedMsg}</div>
+                    ) : (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        <span style={{
+                          fontFamily: MT, fontSize: 9.5, letterSpacing: ".14em",
+                          textTransform: "uppercase", color: "#9A968F",
+                        }}>save into my thread</span>
+                        <select
+                          defaultValue=""
+                          onChange={(e) => {
+                            const id = e.target.value;
+                            if (!id) return;
+                            const res = addFindToThread(id, {
+                              title: data.t, source: data.s, url: data.url,
+                              mediaType: data.mediaType,
+                              fromOwner: thread.owner || null,
+                            });
+                            if (res) {
+                              const q = res.thread.q || "your thread";
+                              setSavedMsg(`Saved into “${q.length > 48 ? q.slice(0, 48) + "…" : q}”. It’s pinned there now.`);
+                            }
+                          }}
+                          style={{
+                            fontFamily: MT, fontSize: 11, padding: "7px 10px",
+                            borderRadius: 3, border: `1px solid ${palette.accent}55`,
+                            background: "#FFFFFF", color: palette.accent, cursor: "pointer",
+                          }}>
+                          <option value="">choose a thread…</option>
+                          {myThreads.map(t => (
+                            <option key={t.id} value={t.id}>
+                              {t.q.length > 50 ? t.q.slice(0, 50) + "…" : t.q}
+                            </option>
+                          ))}
+                        </select>
+                        <span style={{
+                          fontFamily: ST, fontSize: 12, fontStyle: "italic", color: "#9A968F",
+                        }}>— or “go deeper” to start a new thread from it</span>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {noteDraft !== null && (
                   <div style={{ marginTop: 16 }}>
                     <textarea
@@ -881,7 +933,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
                   }} />
                   {/* label */}
                   <div onClick={() => {
-                    setNoteDraft(null);
+                    setNoteDraft(null); setSavedMsg(null);
                     if (art.kind === "find") setActiveCard({ kind: "find", data: art.data });
                     if (art.kind === "note") setActiveCard({ kind: "note", data: art.data });
                   }} style={{
@@ -1080,7 +1132,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
               transition: "opacity .25s ease",
             }}>
               <FindCard find={F.f} x={F.x} y={F.y} palette={palette}
-                onOpen={() => { setNoteDraft(null); setActiveCard({ kind: "find", data: F.f }); }}
+                onOpen={() => { setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "find", data: F.f }); }}
                 onShared={() => navigate("courtyard", { id: thread.id })} />
             </div>
           ))}
@@ -1092,7 +1144,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
               transition: "opacity .25s ease",
             }}>
               <NoteCard note={N.n} x={N.x} y={N.y} palette={palette}
-                onOpen={() => { setNoteDraft(null); setActiveCard({ kind: "note", data: N.n }); }}
+                onOpen={() => { setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "note", data: N.n }); }}
                 onShared={() => navigate("courtyard", { id: thread.id })} />
             </div>
           ))}
