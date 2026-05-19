@@ -771,6 +771,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
       }}>
         {header}
         {breadcrumb}
+        {identityCard}
         {viewToggle}
         {apertures.map((a, i) => <ApT key={i} {...a} />)}
         <TimelineScrubber
