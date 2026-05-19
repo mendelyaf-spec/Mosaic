@@ -451,19 +451,28 @@ export function SearchRoom({ navigate, fromThreadId, deepenCard }) {
     return getThreadById(fromThreadId);
   }, [fromThreadId]);
 
+  // The hash router serializes params via URLSearchParams, so an object
+  // param arrives stringified. Go-deeper JSON-encodes the card; decode it
+  // back here (tolerate a raw object too, in case a caller passes one).
+  const deepen = useMemo(() => {
+    if (!deepenCard) return null;
+    if (typeof deepenCard === 'object') return deepenCard;
+    try { return JSON.parse(deepenCard); } catch { return null; }
+  }, [deepenCard]);
+
   // The card this DOS session was "deepened" from, if launched via Go deeper.
   // Pinned as context; saved as a find in whatever destination is chosen.
   // `fromOwner` set when the card came from someone else (courtyard / kindred).
   const seededFrom = useMemo(() => {
-    if (!deepenCard) return null;
+    if (!deepen) return null;
     return {
-      title: deepenCard.t || deepenCard.title || '',
-      source: deepenCard.s || deepenCard.source || '',
-      url: deepenCard.url || '',
-      mediaType: deepenCard.mediaType || '',
-      fromOwner: deepenCard.fromOwner || null,
+      title: deepen.t || deepen.title || '',
+      source: deepen.s || deepen.source || '',
+      url: deepen.url || '',
+      mediaType: deepen.mediaType || '',
+      fromOwner: deepen.fromOwner || null,
     };
-  }, [deepenCard]);
+  }, [deepen]);
 
   const [prefsState, setPrefsState] = useState(loadPrefs);
   const [allMoves, setAllMoves] = useState(loadMoves);
@@ -477,7 +486,7 @@ export function SearchRoom({ navigate, fromThreadId, deepenCard }) {
   // Deepen-a-card opens blank — the pinned card is the context, the user
   // brings a fresh question. A plain DOS-from-thread still prefills the
   // thread's current question.
-  const [input, setInput] = useState(deepenCard ? '' : (fromThread ? fromThread.q : ''));
+  const [input, setInput] = useState(deepen ? '' : (fromThread ? fromThread.q : ''));
   const [submitted, setSubmitted] = useState(null);
   const [characterization, setCharacterization] = useState(null);
   const [items, setItems] = useState({}); // moveId -> item
@@ -594,7 +603,7 @@ export function SearchRoom({ navigate, fromThreadId, deepenCard }) {
   // A card was deepened but there's no own-thread to grow — it came from
   // someone else (courtyard / kindred). Offer "save into one of my threads"
   // or "new thread" instead of append/spawn.
-  const foreignDeepen = !!deepenCard && !canAppend;
+  const foreignDeepen = !!deepen && !canAppend;
   const myThreads = useMemo(
     () => (foreignDeepen ? getAllThreads().filter(t => isOwnThread(t.id)) : []),
     [foreignDeepen]
@@ -737,7 +746,7 @@ export function SearchRoom({ navigate, fromThreadId, deepenCard }) {
           textTransform: 'uppercase', color: '#9A968F', marginBottom: 6,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
-          <span>§03 DOS · depth of search{deepenCard ? <span style={{ color: '#1A5C46' }}> · going deeper</span> : fromThread && <span style={{ color: '#1A5C46' }}> · from your thread</span>}</span>
+          <span>§03 DOS · depth of search{deepen ? <span style={{ color: '#1A5C46' }}> · going deeper</span> : fromThread && <span style={{ color: '#1A5C46' }}> · from your thread</span>}</span>
           <div style={{ display: 'flex', gap: 6 }}>
             <button onClick={() => { setHistory(loadHistory()); setHistoryOpen(true); }} style={{
               fontFamily: FONT_MONO, fontSize: 10, letterSpacing: '.14em',
@@ -757,10 +766,10 @@ export function SearchRoom({ navigate, fromThreadId, deepenCard }) {
           fontFamily: FONT_SERIF, fontStyle: 'italic', fontWeight: 300,
           fontSize: 36, lineHeight: 1.15, margin: '0 0 22px', color: '#1A1714',
         }}>
-          {deepenCard ? 'Go deeper from here.' : fromThread ? 'Take your question down.' : 'Bring a question down.'}
+          {deepen ? 'Go deeper from here.' : fromThread ? 'Take your question down.' : 'Bring a question down.'}
         </h1>
 
-        {deepenCard && (
+        {deepen && (
           <div style={{
             marginBottom: 20, padding: '14px 16px', borderRadius: 5,
             background: '#FFFFFF', border: '1px solid rgba(26,92,70,.28)',

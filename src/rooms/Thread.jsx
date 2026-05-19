@@ -563,12 +563,13 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
                   }}>add a note on this</button>
                   <button onClick={() => navigate("search", {
                     from: thread.id,
-                    deepen: {
+                    // JSON-encoded: the hash router stringifies object params.
+                    deepen: JSON.stringify({
                       t: data.t, s: data.s, url: data.url, mediaType: data.mediaType,
                       // Crediting the owner when this is someone else's thread
                       // you've walked into from the courtyard — not your own.
-                      fromOwner: isOwnThread(thread.id) ? undefined : (thread.owner || null),
-                    },
+                      fromOwner: isOwnThread(thread.id) ? null : (thread.owner || null),
+                    }),
                   })} style={{
                     fontFamily: MT, fontSize: 10, letterSpacing: ".12em",
                     textTransform: "uppercase", color: palette.accent,
