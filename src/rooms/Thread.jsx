@@ -14,7 +14,7 @@ import {
   FONT_MONO as MT,
 } from '../shell/shell.jsx';
 import { WM } from '../data/wm-data.js';
-import { isOwnThread, setFindNote, addFindToThread, getAllThreads } from '../lib/threads.js';
+import { isOwnThread, setFindNote, addFindToThread, spawnThreadFromCard, getAllThreads } from '../lib/threads.js';
 
 // One mile-marker pin on the river
 function MileMarker({ mm, x, y, isCurrent, palette }) {
@@ -329,7 +329,8 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
   // user from "I see this exists" to "I'm reading it".
   const [activeCard, setActiveCard] = useStateT(null); // {kind:'find'|'note', data}
   const [noteDraft, setNoteDraft] = useStateT(null); // string while editing a find's note, else null
-  const [savedMsg, setSavedMsg] = useStateT(null);   // confirmation after saving a foreign find into one of my threads
+  const [spawnDraft, setSpawnDraft] = useStateT(null); // string while naming a thread spawned off a card, else null
+  const [savedMsg, setSavedMsg] = useStateT(null);   // confirmation after saving/spawning off a foreign card
   const canEdit = isOwnThread(thread.id); // can't annotate someone else's thread
   const myThreads = getAllThreads().filter(t => isOwnThread(t.id));
 
@@ -502,7 +503,117 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
   const cardOverlay = (() => {
     if (!activeCard) return null;
     const { kind, data } = activeCard;
-    const close = () => { setActiveCard(null); setNoteDraft(null); setSavedMsg(null); };
+    const close = () => { setActiveCard(null); setNoteDraft(null); setSpawnDraft(null); setSavedMsg(null); };
+
+    // Thread actions for a card on someone else's thread — save it into one
+    // of your threads, or spawn a brand-new thread off it. Neither requires
+    // "go deeper" first: deepening is one path to a fork, not the only one.
+    // `item` is the normalized card { title, source, url, mediaType }.
+    const threadActions = (item) => (
+      <div style={{
+        marginTop: 16, paddingTop: 16,
+        borderTop: "1px solid rgba(26,23,20,.1)",
+      }}>
+        {savedMsg ? (
+          <div style={{
+            fontFamily: ST, fontSize: 13.5, fontStyle: "italic",
+            color: palette.accent,
+          }}>{savedMsg}</div>
+        ) : spawnDraft !== null ? (
+          <div>
+            <div style={{
+              fontFamily: MT, fontSize: 9.5, letterSpacing: ".14em",
+              textTransform: "uppercase", color: "#9A968F", marginBottom: 8,
+            }}>the question this new thread opens on</div>
+            <input
+              autoFocus
+              value={spawnDraft}
+              onChange={(e) => setSpawnDraft(e.target.value)}
+              placeholder={item.title || "name the inquiry…"}
+              style={{
+                width: "100%", boxSizing: "border-box",
+                fontFamily: ST, fontSize: 14.5, fontStyle: "italic",
+                fontWeight: 300, color: "#1A1714",
+                padding: "9px 12px", borderRadius: 4,
+                border: `1px solid ${palette.accent}55`, background: "#FFFFFF",
+              }} />
+            <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
+              <button
+                onClick={() => {
+                  const res = spawnThreadFromCard(item, {
+                    owner: thread.owner || null,
+                    question: spawnDraft,
+                  });
+                  if (res) {
+                    const q = res.q || "your new thread";
+                    setSavedMsg(`Spawned “${q.length > 48 ? q.slice(0, 48) + "…" : q}” — it’s on your Home as a newly-spawned thread, with this card pinned.`);
+                  }
+                  setSpawnDraft(null);
+                }}
+                style={{
+                  fontFamily: MT, fontSize: 10, letterSpacing: ".12em",
+                  textTransform: "uppercase", color: "#FAF5E9",
+                  background: palette.accent, border: "none",
+                  padding: "7px 14px", borderRadius: 3, cursor: "pointer",
+                }}>spawn it →</button>
+              <button
+                onClick={() => setSpawnDraft(null)}
+                style={{
+                  fontFamily: MT, fontSize: 10, letterSpacing: ".12em",
+                  textTransform: "uppercase", color: "#5E5A55",
+                  background: "transparent", border: "1px solid rgba(26,23,20,.15)",
+                  padding: "7px 14px", borderRadius: 3, cursor: "pointer",
+                }}>cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span style={{
+              fontFamily: MT, fontSize: 9.5, letterSpacing: ".14em",
+              textTransform: "uppercase", color: "#9A968F",
+            }}>save into my thread</span>
+            <select
+              defaultValue=""
+              onChange={(e) => {
+                const id = e.target.value;
+                if (!id) return;
+                const res = addFindToThread(id, {
+                  title: item.title, source: item.source, url: item.url,
+                  mediaType: item.mediaType,
+                  fromOwner: thread.owner || null,
+                });
+                if (res) {
+                  const q = res.thread.q || "your thread";
+                  setSavedMsg(`Saved into “${q.length > 48 ? q.slice(0, 48) + "…" : q}”. It’s pinned there now.`);
+                }
+              }}
+              style={{
+                fontFamily: MT, fontSize: 11, padding: "7px 10px",
+                borderRadius: 3, border: `1px solid ${palette.accent}55`,
+                background: "#FFFFFF", color: palette.accent, cursor: "pointer",
+              }}>
+              <option value="">choose a thread…</option>
+              {myThreads.map(t => (
+                <option key={t.id} value={t.id}>
+                  {t.q.length > 50 ? t.q.slice(0, 50) + "…" : t.q}
+                </option>
+              ))}
+            </select>
+            <span style={{
+              fontFamily: ST, fontSize: 12, fontStyle: "italic", color: "#9A968F",
+            }}>or</span>
+            <button
+              onClick={() => setSpawnDraft("")}
+              style={{
+                fontFamily: MT, fontSize: 10, letterSpacing: ".12em",
+                textTransform: "uppercase", color: palette.accent,
+                background: "transparent", border: `1px solid ${palette.accent}55`,
+                padding: "7px 12px", borderRadius: 3, cursor: "pointer",
+              }}>spawn a new thread from this →</button>
+          </div>
+        )}
+      </div>
+    );
     return (
       <>
         <div data-ui style={{
@@ -633,56 +744,9 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
                     padding: "7px 12px", borderRadius: 3, cursor: "pointer",
                   }}>go deeper (DOS) →</button>
                 </div>
-                {!canEdit && (
-                  <div style={{
-                    marginTop: 16, paddingTop: 16,
-                    borderTop: "1px solid rgba(26,23,20,.1)",
-                  }}>
-                    {savedMsg ? (
-                      <div style={{
-                        fontFamily: ST, fontSize: 13.5, fontStyle: "italic",
-                        color: palette.accent,
-                      }}>{savedMsg}</div>
-                    ) : (
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                        <span style={{
-                          fontFamily: MT, fontSize: 9.5, letterSpacing: ".14em",
-                          textTransform: "uppercase", color: "#9A968F",
-                        }}>save into my thread</span>
-                        <select
-                          defaultValue=""
-                          onChange={(e) => {
-                            const id = e.target.value;
-                            if (!id) return;
-                            const res = addFindToThread(id, {
-                              title: data.t, source: data.s, url: data.url,
-                              mediaType: data.mediaType,
-                              fromOwner: thread.owner || null,
-                            });
-                            if (res) {
-                              const q = res.thread.q || "your thread";
-                              setSavedMsg(`Saved into “${q.length > 48 ? q.slice(0, 48) + "…" : q}”. It’s pinned there now.`);
-                            }
-                          }}
-                          style={{
-                            fontFamily: MT, fontSize: 11, padding: "7px 10px",
-                            borderRadius: 3, border: `1px solid ${palette.accent}55`,
-                            background: "#FFFFFF", color: palette.accent, cursor: "pointer",
-                          }}>
-                          <option value="">choose a thread…</option>
-                          {myThreads.map(t => (
-                            <option key={t.id} value={t.id}>
-                              {t.q.length > 50 ? t.q.slice(0, 50) + "…" : t.q}
-                            </option>
-                          ))}
-                        </select>
-                        <span style={{
-                          fontFamily: ST, fontSize: 12, fontStyle: "italic", color: "#9A968F",
-                        }}>— or “go deeper” to start a new thread from it</span>
-                      </div>
-                    )}
-                  </div>
-                )}
+                {!canEdit && threadActions({
+                  title: data.t, source: data.s, url: data.url, mediaType: data.mediaType,
+                })}
                 {noteDraft !== null && (
                   <div style={{ marginTop: 16 }}>
                     <textarea
@@ -783,6 +847,12 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
                   fontWeight: 300, lineHeight: 1.45, color: "#1A1714",
                   margin: 0, textWrap: "pretty",
                 }}>"{data.cap}"</p>
+                {!canEdit && threadActions({
+                  title: data.cap,
+                  source: `${data.type} note${data.dur ? ` · ${data.dur}` : ""}`,
+                  url: "",
+                  mediaType: data.type,
+                })}
               </>
             )}
           </div>

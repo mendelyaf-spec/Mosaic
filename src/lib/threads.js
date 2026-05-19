@@ -289,6 +289,68 @@ export function spawnThreadFromSession(parentThreadId, session, opts = {}) {
   return spawned;
 }
 
+// Spawn a new thread directly off a single card — no DOS run required.
+// "Going deeper" (a DOS session) is one way to fork an inquiry, but it must
+// not be the ONLY way: seeing someone else's find/note and starting your own
+// thread from it is a first-class action. The card is pinned as the seed
+// find; the thread opens on `question` (falls back to the card's own title
+// so a spawn is never blocked on typing). Foreign lineage is recorded via
+// owner/viaCard, exactly like a foreign session-spawn.
+//
+//   card   { title, source, url, mediaType }
+//   opts.owner     whose card this was (when it's not yours)
+//   opts.question  the question this new thread opens on (optional)
+export function spawnThreadFromCard(card, opts = {}) {
+  const { owner = '', question = '' } = opts;
+  if (!card || (!card.title && !card.source)) return null;
+  const ts = Date.now();
+  const id = 't-' + ts;
+  const via = (card.title || card.source || '').trim();
+  const q = (question || '').trim() || via || 'a new thread';
+  const markerId = 'm-0';
+
+  const seed = makeSeedFind({
+    title: card.title || via || '(untitled)',
+    source: card.source || '',
+    url: card.url || '',
+    mediaType: card.mediaType,
+    fromOwner: owner || null,
+  }, markerId, ts);
+  seed.note = owner ? `Spawned a thread off ${owner}'s card.` : 'Spawned a thread off this card.';
+
+  const trunc = via.length > 48 ? via.slice(0, 48) + '…' : via;
+  const spawned = {
+    id,
+    q,
+    domain: 'inquiry',
+    dc: pickPalette(null),
+    state: 'spawned',
+    age: 'just now',
+    last: 'just now',
+    finds: 1,
+    notes: 1,
+    mileMarkers: [{ id: markerId, age: 'just now', q }],
+    fl: [seed],
+    notesList: [],
+    kindred: [],
+    courtyardName: null,
+    courtyardTopic: null,
+    spawnedFrom: {
+      owner: owner || null,
+      viaCard: via || null,
+      at: 'just now',
+      reason: owner
+        ? `split off from ${owner}${trunc ? ` · “${trunc}”` : ''}`
+        : `split off from “${trunc}”`,
+    },
+    parentThreadId: null,
+    rootThreadId: null,
+    _userCreated: true,
+  };
+  saveThread(spawned);
+  return spawned;
+}
+
 // Build find objects for a session, tethered to a given marker id.
 function buildFinds({ items, signals = {}, moves = [], diffMoves = [], markerId, tsBase }) {
   const diffText = (diffMoves || [])
