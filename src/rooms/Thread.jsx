@@ -17,13 +17,15 @@ import { WM } from '../data/wm-data.js';
 import { isOwnThread, setFindNote, addFindToThread, spawnThreadFromCard, getAllThreads } from '../lib/threads.js';
 
 // One mile-marker pin on the river
-function MileMarker({ mm, x, y, isCurrent, palette }) {
+function MileMarker({ mm, x, y, isCurrent, palette, onOpen }) {
   return (
-    <div data-card style={{
+    <div data-card onClick={onOpen} style={{
       position: "absolute", left: x, top: y,
       transform: "translate(-50%, -50%)",
-      maxWidth: 280,
-    }}>
+      maxWidth: 280, cursor: "pointer",
+    }}
+    onMouseEnter={e => { e.currentTarget.style.transform = "translate(-50%, -50%) translateY(-2px)"; }}
+    onMouseLeave={e => { e.currentTarget.style.transform = "translate(-50%, -50%)"; }}>
       <div style={{
         display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
       }}>
@@ -509,7 +511,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
     // of your threads, or spawn a brand-new thread off it. Neither requires
     // "go deeper" first: deepening is one path to a fork, not the only one.
     // `item` is the normalized card { title, source, url, mediaType }.
-    const threadActions = (item) => (
+    const threadActions = (item, { saveable = true } = {}) => (
       <div style={{
         marginTop: 16, paddingTop: 16,
         borderTop: "1px solid rgba(26,23,20,.1)",
@@ -568,40 +570,44 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
           </div>
         ) : (
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span style={{
-              fontFamily: MT, fontSize: 9.5, letterSpacing: ".14em",
-              textTransform: "uppercase", color: "#9A968F",
-            }}>save into my thread</span>
-            <select
-              defaultValue=""
-              onChange={(e) => {
-                const id = e.target.value;
-                if (!id) return;
-                const res = addFindToThread(id, {
-                  title: item.title, source: item.source, url: item.url,
-                  mediaType: item.mediaType,
-                  fromOwner: thread.owner || null,
-                });
-                if (res) {
-                  const q = res.thread.q || "your thread";
-                  setSavedMsg(`Saved into “${q.length > 48 ? q.slice(0, 48) + "…" : q}”. It’s pinned there now.`);
-                }
-              }}
-              style={{
-                fontFamily: MT, fontSize: 11, padding: "7px 10px",
-                borderRadius: 3, border: `1px solid ${palette.accent}55`,
-                background: "#FFFFFF", color: palette.accent, cursor: "pointer",
-              }}>
-              <option value="">choose a thread…</option>
-              {myThreads.map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.q.length > 50 ? t.q.slice(0, 50) + "…" : t.q}
-                </option>
-              ))}
-            </select>
-            <span style={{
-              fontFamily: ST, fontSize: 12, fontStyle: "italic", color: "#9A968F",
-            }}>or</span>
+            {saveable && (
+              <>
+                <span style={{
+                  fontFamily: MT, fontSize: 9.5, letterSpacing: ".14em",
+                  textTransform: "uppercase", color: "#9A968F",
+                }}>save into my thread</span>
+                <select
+                  defaultValue=""
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    if (!id) return;
+                    const res = addFindToThread(id, {
+                      title: item.title, source: item.source, url: item.url,
+                      mediaType: item.mediaType,
+                      fromOwner: thread.owner || null,
+                    });
+                    if (res) {
+                      const q = res.thread.q || "your thread";
+                      setSavedMsg(`Saved into “${q.length > 48 ? q.slice(0, 48) + "…" : q}”. It’s pinned there now.`);
+                    }
+                  }}
+                  style={{
+                    fontFamily: MT, fontSize: 11, padding: "7px 10px",
+                    borderRadius: 3, border: `1px solid ${palette.accent}55`,
+                    background: "#FFFFFF", color: palette.accent, cursor: "pointer",
+                  }}>
+                  <option value="">choose a thread…</option>
+                  {myThreads.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.q.length > 50 ? t.q.slice(0, 50) + "…" : t.q}
+                    </option>
+                  ))}
+                </select>
+                <span style={{
+                  fontFamily: ST, fontSize: 12, fontStyle: "italic", color: "#9A968F",
+                }}>or</span>
+              </>
+            )}
             <button
               onClick={() => setSpawnDraft("")}
               style={{
@@ -609,7 +615,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
                 textTransform: "uppercase", color: palette.accent,
                 background: "transparent", border: `1px solid ${palette.accent}55`,
                 padding: "7px 12px", borderRadius: 3, cursor: "pointer",
-              }}>spawn a new thread from this →</button>
+              }}>{saveable ? "spawn a new thread from this →" : "spawn a thread from this question →"}</button>
           </div>
         )}
       </div>
@@ -855,6 +861,34 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
                 })}
               </>
             )}
+
+            {kind === "marker" && (
+              <>
+                <div style={{
+                  fontFamily: MT, fontSize: 9, letterSpacing: ".18em",
+                  textTransform: "uppercase", color: palette.accent,
+                  marginBottom: 10,
+                }}>{data.isCurrent ? "current reframe" : "reframe"} · {data.age}</div>
+                <p style={{
+                  fontFamily: ST, fontSize: 22, fontStyle: "italic",
+                  fontWeight: 300, lineHeight: 1.35, color: "#1A1714",
+                  margin: 0, textWrap: "pretty",
+                }}>"{data.q}"</p>
+                <div style={{
+                  marginTop: 14,
+                  fontFamily: ST, fontSize: 13, lineHeight: 1.55,
+                  color: "#5E5A55", fontWeight: 300,
+                }}>
+                  {canEdit
+                    ? "A turn in how the question got asked."
+                    : `A turn in how ${thread.owner || "they"} asked it. If it opens something for you, take it up as your own thread.`}
+                </div>
+                {!canEdit && threadActions(
+                  { title: data.q, source: "", url: "", mediaType: "reframe" },
+                  { saveable: false },
+                )}
+              </>
+            )}
           </div>
         </div>
       </>
@@ -891,6 +925,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
       ...thread.mileMarkers.map((mm, i) => ({
         kind: "reframe", icon: "↳", label: mm.q, days: ageToDays(mm.age), seed: i,
         isCurrent: i === thread.mileMarkers.length - 1,
+        data: { q: mm.q, age: mm.age, isCurrent: i === thread.mileMarkers.length - 1 },
       })),
       ...thread.fl.map((f, i) => ({
         kind: "find", icon: f.i, label: f.t, source: f.s, days: ageToDays(f.d), seed: i+50,
@@ -1019,9 +1054,10 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
                   }} />
                   {/* label */}
                   <div onClick={() => {
-                    setNoteDraft(null); setSavedMsg(null);
+                    setNoteDraft(null); setSpawnDraft(null); setSavedMsg(null);
                     if (art.kind === "find") setActiveCard({ kind: "find", data: art.data });
                     if (art.kind === "note") setActiveCard({ kind: "note", data: art.data });
+                    if (art.kind === "reframe") setActiveCard({ kind: "marker", data: art.data });
                   }} style={{
                     background: isReframe ? palette.bg : "#FFFFFF",
                     border: `1px solid ${palette.accent}${isReframe ? "55" : "22"}`,
@@ -1034,7 +1070,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
                     lineHeight: 1.3, color: "#1A1714",
                     maxWidth: isReframe ? 240 : 180,
                     boxShadow: isReframe ? `0 4px 14px ${palette.accent}1a` : "0 1px 4px rgba(26,23,20,.06)",
-                    cursor: art.kind === "reframe" ? "default" : "pointer",
+                    cursor: "pointer",
                     display: isReframe ? "block" : "flex",
                     alignItems: "flex-start", gap: 5,
                     marginTop: isFind ? 8 : 0,
@@ -1208,7 +1244,9 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
           {/* Mile-markers */}
           {markers.map(m => (
             <MileMarker key={m.i} mm={m.mm} x={m.x} y={m.y}
-              isCurrent={m.isCurrent} palette={palette} />
+              isCurrent={m.isCurrent} palette={palette}
+              onOpen={() => { setNoteDraft(null); setSpawnDraft(null); setSavedMsg(null);
+                setActiveCard({ kind: "marker", data: { q: m.mm.q, age: m.mm.age, isCurrent: m.isCurrent } }); }} />
           ))}
 
           {/* Finds — only items that existed by the head's moment in time. */}

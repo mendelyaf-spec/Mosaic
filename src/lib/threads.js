@@ -309,14 +309,22 @@ export function spawnThreadFromCard(card, opts = {}) {
   const q = (question || '').trim() || via || 'a new thread';
   const markerId = 'm-0';
 
-  const seed = makeSeedFind({
-    title: card.title || via || '(untitled)',
-    source: card.source || '',
-    url: card.url || '',
-    mediaType: card.mediaType,
-    fromOwner: owner || null,
-  }, markerId, ts);
-  seed.note = owner ? `Spawned a thread off ${owner}'s card.` : 'Spawned a thread off this card.';
+  // Pin the originating card as a seed find only when it's a real artifact
+  // (a source/link). Spawning off a bare question — a reframe in someone's
+  // history — has nothing to pin: the new thread simply opens on it.
+  const hasArtifact = !!(card.source || card.url);
+  const fl = [];
+  if (hasArtifact) {
+    const seed = makeSeedFind({
+      title: card.title || via || '(untitled)',
+      source: card.source || '',
+      url: card.url || '',
+      mediaType: card.mediaType,
+      fromOwner: owner || null,
+    }, markerId, ts);
+    seed.note = owner ? `Spawned a thread off ${owner}'s card.` : 'Spawned a thread off this card.';
+    fl.push(seed);
+  }
 
   const trunc = via.length > 48 ? via.slice(0, 48) + '…' : via;
   const spawned = {
@@ -327,10 +335,10 @@ export function spawnThreadFromCard(card, opts = {}) {
     state: 'spawned',
     age: 'just now',
     last: 'just now',
-    finds: 1,
-    notes: 1,
+    finds: fl.length,
+    notes: fl.filter(f => f.note).length,
     mileMarkers: [{ id: markerId, age: 'just now', q }],
-    fl: [seed],
+    fl,
     notesList: [],
     kindred: [],
     courtyardName: null,
