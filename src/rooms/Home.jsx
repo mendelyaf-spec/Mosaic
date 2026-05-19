@@ -12,7 +12,8 @@ import {
   ZOOM_DEFAULT,
 } from '../shell/shell.jsx';
 import { WM } from '../data/wm-data.js';
-import { getAllThreads } from '../lib/threads.js';
+import { getAllThreads, getThreadById } from '../lib/threads.js';
+import { ThreadRoom } from './Thread.jsx';
 
 function ThreadCluster({ thread, pos, onOpen }) {
   const pal = WM.DOMAIN[thread.dc];
@@ -223,12 +224,44 @@ function ThreadCluster({ thread, pos, onOpen }) {
   );
 }
 
+// In-place thread expansion. The clicked thread's mind map (the real Thread
+// room) grows in while the Home constellation behind it recedes. No route
+// change — collapse via the breadcrumb "Home", the ✕, or Esc.
+function ThreadExpansion({ thread, navigate, onClose }) {
+  const [shown, setShown] = useStateH(false);
+  React.useEffect(() => {
+    const r = requestAnimationFrame(() => setShown(true));
+    return () => cancelAnimationFrame(r);
+  }, []);
+  if (!thread) return null;
+  return (
+    <div data-ui style={{
+      position: "fixed", inset: 0, zIndex: 80,
+      opacity: shown ? 1 : 0,
+      transform: shown ? "scale(1)" : "scale(0.94)",
+      transformOrigin: "center center",
+      transition: "opacity .34s ease, transform .34s ease",
+    }}>
+      <ThreadRoom thread={thread} navigate={navigate} onClose={onClose} />
+    </div>
+  );
+}
+
 function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStage, openerMode }) {
   const threads = getAllThreads();
   const [zoom, setZoom] = useStateH(ZOOM_DEFAULT);
   const [viewPeriod, setViewPeriod] = useStateH("all");
   const [viewMode, setViewMode] = useStateH("spatial"); // "spatial" | "timeline"
   const [schedulerOpen, setSchedulerOpen] = useStateH(false);
+
+  // Clicking a thread expands its mind map in place — the constellation
+  // recedes behind it — instead of routing to the Thread page.
+  const [expandedThreadId, setExpandedThreadId] = useStateH(null);
+  const openThread = (id) => setExpandedThreadId(id);
+  const collapseThread = () => setExpandedThreadId(null);
+  const expandedThread = expandedThreadId
+    ? (getThreadById(expandedThreadId) || threads.find(t => t.id === expandedThreadId) || null)
+    : null;
 
   // Per-thread activity weight per period — 1 = bright, 0 = dim out.
   // Hand-tuned from each thread's `last` timestamp + mile-marker dates.
@@ -723,7 +756,7 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
                   padding: "8px 12px", borderRadius: 4,
                   borderLeft: `3px solid ${pal.accent}`,
                   cursor: "pointer",
-                }} onClick={() => navigate("thread", { id: t.id })}>
+                }} onClick={() => openThread(t.id)}>
                   <div style={{
                     fontSize: 9, fontFamily: FH, color: pal.accent,
                     letterSpacing: ".08em", textTransform: "uppercase",
@@ -809,12 +842,16 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
             Hollow circles = finds and notes you collected. Click a thread question to enter.
           </div>
         </div>
+        {expandedThread && (
+          <ThreadExpansion thread={expandedThread} navigate={navigate} onClose={collapseThread} />
+        )}
       </div>
     );
   }
 
   // ============ SPATIAL VIEW ============
   return (
+    <>
     <PZCH
       canvasW={canvasW} canvasH={canvasH}
       background="#F2EFE6"
@@ -929,13 +966,17 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
                 transition: "opacity .4s, filter .4s",
               }}>
                 <ThreadCluster thread={t} pos={pos}
-                  onOpen={th => navigate("thread", { id: th.id })} />
+                  onOpen={th => openThread(th.id)} />
               </div>
             );
           })}
         </>
       )}
     </PZCH>
+    {expandedThread && (
+      <ThreadExpansion thread={expandedThread} navigate={navigate} onClose={collapseThread} />
+    )}
+    </>
   );
 }
 

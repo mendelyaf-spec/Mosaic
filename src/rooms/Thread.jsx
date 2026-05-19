@@ -317,7 +317,7 @@ function TimelineScrubber({ markers, oldestDays, onScrub, label = "thread time" 
   );
 }
 
-function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
+function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null }) {
   const palette = WM.DOMAIN[thread.dc];
   const canvasW = 3200, canvasH = 2000;
   // Scrubber head — days-ago. Default: now. Cards older than (head + 7) dim.
@@ -332,6 +332,15 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
   const [savedMsg, setSavedMsg] = useStateT(null);   // confirmation after saving a foreign find into one of my threads
   const canEdit = isOwnThread(thread.id); // can't annotate someone else's thread
   const myThreads = getAllThreads().filter(t => isOwnThread(t.id));
+
+  // When rendered as an in-place expansion on Home (onClose provided), Esc
+  // collapses back to the constellation instead of leaving the page.
+  useEffect(() => {
+    if (!onClose) return;
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   // Orbital layout — title card at center; mile-markers on an inner arc
   // running older→newer along the top half; finds in the upper outer ring,
@@ -412,7 +421,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
     <Breadcrumb
       showSwitcher={false}
       trail={[
-        { label: "Home", onClick: () => navigate("home") },
+        { label: "Home", onClick: () => onClose ? onClose() : navigate("home") },
         { label: "Thread" },
       ]}
     />
