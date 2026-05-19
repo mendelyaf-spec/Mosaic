@@ -420,10 +420,15 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
   const breadcrumb = (
     <Breadcrumb
       showSwitcher={false}
-      trail={[
-        { label: "Home", onClick: () => onClose ? onClose() : navigate("home") },
-        { label: "Thread" },
-      ]}
+      trail={onClose
+        ? [
+            { label: "← All threads", onClick: () => onClose() },
+            { label: "Thread" },
+          ]
+        : [
+            { label: "Home", onClick: () => navigate("home") },
+            { label: "Thread" },
+          ]}
     />
   );
 
