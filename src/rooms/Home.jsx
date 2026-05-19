@@ -235,7 +235,7 @@ function ThreadExpansion({ thread, navigate, onClose }) {
   }, []);
   if (!thread) return null;
   return (
-    <div data-ui style={{
+    <div style={{
       position: "fixed", inset: 0, zIndex: 80,
       opacity: shown ? 1 : 0,
       transform: shown ? "scale(1)" : "scale(0.94)",
