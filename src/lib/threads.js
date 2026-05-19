@@ -206,8 +206,9 @@ export function buildThreadFromSession({
 //
 // You can spawn off your OWN thread (pass its id) or off SOMEONE ELSE's
 // card — a courtyard shared item / kindred find (pass {owner, viaCard}).
-// Foreign spawns carry owner-based lineage instead of a thread id, since
-// you can't see inside their thread; you only know it came from them.
+// Foreign spawns carry owner-based lineage instead of a thread id: a
+// courtyard shared item has no thread id of its own, and you're forking
+// off their card, not appending into their inquiry (which is theirs to grow).
 //
 //   parentThreadId   id of YOUR thread this forked from, or null/'' if foreign
 //   session          same shape as buildThreadFromSession
