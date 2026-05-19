@@ -14,6 +14,7 @@ import {
   FONT_MONO as MT,
 } from '../shell/shell.jsx';
 import { WM } from '../data/wm-data.js';
+import { isOwnThread } from '../lib/threads.js';
 
 // One mile-marker pin on the river
 function MileMarker({ mm, x, y, isCurrent, palette }) {
@@ -562,7 +563,12 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya" }) {
                   }}>add a note on this</button>
                   <button onClick={() => navigate("search", {
                     from: thread.id,
-                    deepen: { t: data.t, s: data.s, url: data.url, mediaType: data.mediaType },
+                    deepen: {
+                      t: data.t, s: data.s, url: data.url, mediaType: data.mediaType,
+                      // Crediting the owner when this is someone else's thread
+                      // you've walked into from the courtyard — not your own.
+                      fromOwner: isOwnThread(thread.id) ? undefined : (thread.owner || null),
+                    },
                   })} style={{
                     fontFamily: MT, fontSize: 10, letterSpacing: ".12em",
                     textTransform: "uppercase", color: palette.accent,
