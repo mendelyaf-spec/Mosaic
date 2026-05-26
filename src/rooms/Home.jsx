@@ -947,18 +947,62 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
             });
           })()}
           <style>{`@keyframes wmArtIn{from{opacity:0;transform:translate(-50%,-50%) scale(.9)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}`}</style>
+
+          {/* Persona at the canvas center, with threads orbiting — only in the
+              default "all" view. Period drill-downs keep their time-box layout. */}
+          {!isNested && (() => {
+            const cx = canvasW / 2, cy = canvasH / 2;
+            return (
+              <div data-ui style={{
+                position: "absolute", left: cx, top: cy,
+                transform: "translate(-50%,-50%)",
+                width: 280, padding: "26px 28px 22px",
+                background: "#FAF5E9",
+                border: "1.5px solid rgba(26,92,70,.45)",
+                borderRadius: 14,
+                boxShadow: "0 18px 50px rgba(26,92,70,.18), 0 2px 10px rgba(26,23,20,.06)",
+                textAlign: "center",
+                zIndex: 4,
+                pointerEvents: "none",
+              }}>
+                <div style={{
+                  fontSize: 9.5, letterSpacing: ".15em", textTransform: "uppercase",
+                  color: "#9A968F", marginBottom: 8, fontFamily: FH,
+                }}>Mosaic · Hawley, PA</div>
+                <h2 style={{
+                  fontFamily: SH, fontStyle: "italic", fontSize: 32, fontWeight: 300,
+                  margin: 0, lineHeight: 1, color: "#1A1714", letterSpacing: "-.01em",
+                }}>{personaLabel}</h2>
+                <div style={{
+                  marginTop: 10, fontSize: 11, fontFamily: FH, color: "#5E5A55",
+                }}>{threads.length} {threads.length === 1 ? "thread" : "threads"} held</div>
+              </div>
+            );
+          })()}
+
           {threads.map((t, ti) => {
             const a = activity[t.id] ?? 1;
-            // Seeded threads have a hand-tuned position per period; user-created
-            // threads fall back to a deterministic grid below the seed cluster.
-            const seedPos = layout[t.id];
-            const pos = seedPos || (() => {
-              const userIdx = threads.filter(x => !layout[x.id])
-                                     .findIndex(x => x.id === t.id);
-              const col = userIdx % 3;
-              const row = Math.floor(userIdx / 3);
-              return { x: 360 + col * 460, y: 1320 + row * 360 };
-            })();
+            // In the default view, lay threads out in an orbit around the
+            // persona at canvas center; in period drill-downs keep the
+            // hand-tuned layout (or fallback grid for user-created threads).
+            let pos;
+            if (!isNested) {
+              const cx = canvasW / 2, cy = canvasH / 2;
+              const N = Math.max(threads.length, 1);
+              // Start at top (12 o'clock) and walk clockwise.
+              const theta = -Math.PI / 2 + (ti / N) * Math.PI * 2;
+              const r = 520;
+              pos = { x: cx + Math.cos(theta) * r, y: cy + Math.sin(theta) * r };
+            } else {
+              const seedPos = layout[t.id];
+              pos = seedPos || (() => {
+                const userIdx = threads.filter(x => !layout[x.id])
+                                       .findIndex(x => x.id === t.id);
+                const col = userIdx % 3;
+                const row = Math.floor(userIdx / 3);
+                return { x: 360 + col * 460, y: 1320 + row * 360 };
+              })();
+            }
             return (
               <div key={t.id} style={{
                 opacity: a < 0.3 ? 0.28 : a < 0.7 ? 0.6 : 1,

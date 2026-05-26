@@ -746,7 +746,7 @@ export function SearchRoom({ navigate, fromThreadId, deepenCard }) {
           textTransform: 'uppercase', color: '#9A968F', marginBottom: 6,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
-          <span>§03 DOS · depth of search{deepen ? <span style={{ color: '#1A5C46' }}> · going deeper</span> : fromThread && <span style={{ color: '#1A5C46' }}> · from your thread</span>}</span>
+          <span>§03 DOS · depth optimized search{deepen ? <span style={{ color: '#1A5C46' }}> · going deeper</span> : fromThread && <span style={{ color: '#1A5C46' }}> · from your thread</span>}</span>
           <div style={{ display: 'flex', gap: 6 }}>
             <button onClick={() => { setHistory(loadHistory()); setHistoryOpen(true); }} style={{
               fontFamily: FONT_MONO, fontSize: 10, letterSpacing: '.14em',

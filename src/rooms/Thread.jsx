@@ -453,27 +453,39 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
   // Maya's own threads carry no owner field; kindred threads (walked into
   // from the courtyard) carry the holder's name.
   const ownerLabel = thread.owner || "Maya R.";
+  const goHome = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    navigate("home");
+  };
   const identityCard = (
     <div data-ui
-         onClick={() => navigate("home")}
+         onClick={goHome}
+         onPointerUp={goHome}
          title="Back to home"
          style={{
-      position: "fixed", top: 24, right: 28, zIndex: 30,
+      position: "fixed", top: 24, right: 28, zIndex: 50,
       maxWidth: 260, textAlign: "right",
       cursor: "pointer",
-    }}>
+      padding: "6px 10px",
+      borderRadius: 8,
+      transition: "background .15s ease",
+    }}
+    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(26,23,20,.06)"; }}
+    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
       <div style={{
         fontSize: 9.5, letterSpacing: ".15em", textTransform: "uppercase",
-        color: "#9A968F", marginBottom: 4,
+        color: "#9A968F", marginBottom: 4, pointerEvents: "none",
       }}>Mosaic · Hawley, PA</div>
       <h1 style={{
         fontFamily: ST, fontSize: 26, fontStyle: "italic", fontWeight: 300,
         margin: 0, lineHeight: 1, color: "#1A1714", letterSpacing: "-.01em",
+        pointerEvents: "none",
       }}>{ownerLabel}</h1>
       <p style={{
         fontSize: 11.5, color: "#5E5A55", fontWeight: 300, margin: "6px 0 0",
-        lineHeight: 1.4,
-      }}>{isOwnThread(thread.id) ? "your thread" : `${ownerLabel}’s thread · you can read it, not edit it`}</p>
+        lineHeight: 1.4, pointerEvents: "none",
+      }}>{isOwnThread(thread.id) ? "your thread · click to go home" : `${ownerLabel}’s thread · click to go home`}</p>
     </div>
   );
 
