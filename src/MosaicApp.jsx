@@ -9,8 +9,9 @@ import { HomeRoom } from './rooms/Home.jsx';
 import { ThreadRoom } from './rooms/Thread.jsx';
 import { CourtyardRoom } from './rooms/Courtyard.jsx';
 import { SearchRoom } from './rooms/Search.jsx';
+import { PromenadeRoom } from './rooms/Promenade.jsx';
 import {
-  TownHallRoom, PodRoom, PodAdminRoom, PromenadeRoom,
+  TownHallRoom, PodRoom, PodAdminRoom,
 } from './rooms/Stubs.jsx';
 
 export default function MosaicApp() {

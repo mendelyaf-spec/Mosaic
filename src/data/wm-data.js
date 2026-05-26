@@ -535,6 +535,101 @@ const KINDRED_THREADS = [
   },
 ];
 
+// PERSONAL THREADS — owners not yet inside a courtyard. Same shape as
+// KINDRED_THREADS but with no courtyardName/Topic and no kindred. The
+// promenade browses these too; an item from one of these can't be the
+// basis of a "join courtyard" action (there's nothing to join yet) — only
+// a "request to merge" can fold the two threads into a new courtyard.
+const PERSONAL_THREADS = [
+  {
+    id: "p-juno-letters",
+    q: "Why do letters survive when emails don't?",
+    state: "active",
+    courtyardName: null,
+    courtyardTopic: null,
+    owner: "Juno R.",
+    kindred: [],
+    domain: "form & memory",
+    dc: "purple",
+    age: "5 months",
+    last: "3 days ago",
+    finds: 9,
+    notes: 4,
+    mileMarkers: [
+      { age: "5 months ago", q: "Why do I still have my grandmother's letters?" },
+      { age: "2 months ago", q: "Why do letters survive when emails don't?" },
+    ],
+    fl: [
+      { t: "The Lost Art of Letter Writing", s: "Catherine Field, NYT", d: "4mo", i: "📰" },
+      { t: "On the materiality of correspondence", s: "Lydia Davis — essay", d: "10wk", i: "✎" },
+      { t: "Why Susan Sontag kept everything", s: "Benjamin Moser, biography excerpt", d: "6wk", i: "📖" },
+      { t: "A history of the postal service", s: "Winifred Gallagher", d: "3wk", i: "📖" },
+    ],
+    notesList: [
+      { type: "image", cap: "The shoebox at the back of the closet. Forty years of paper. Nobody's email archive feels like this.", d: "6wk" },
+      { type: "text",  cap: "An email asks to be answered. A letter just asks to be kept.", d: "3wk" },
+    ],
+  },
+  {
+    id: "p-arno-walking",
+    q: "What does a walk give back that a run doesn't?",
+    state: "resting",
+    courtyardName: null,
+    courtyardTopic: null,
+    owner: "Arno L.",
+    kindred: [],
+    domain: "attention",
+    dc: "green",
+    age: "9 months",
+    last: "2 weeks ago",
+    finds: 12,
+    notes: 5,
+    mileMarkers: [
+      { age: "9 months ago", q: "Why do my best ideas show up on the walk home?" },
+      { age: "4 months ago", q: "What does a walk give back that a run doesn't?" },
+    ],
+    fl: [
+      { t: "Wanderlust: A History of Walking", s: "Rebecca Solnit", d: "8mo", i: "📖" },
+      { t: "On the philosophy of walking", s: "Frédéric Gros", d: "6mo", i: "📖" },
+      { t: "Why Steve Jobs took walking meetings", s: "Quartz, profile", d: "3mo", i: "📰" },
+      { t: "Field notes — the South Downs Way", s: "personal log", d: "10wk", i: "✎" },
+    ],
+    notesList: [
+      { type: "audio", cap: "Recording while walking — the rhythm of the sentences changes", dur: "11:04", d: "3mo" },
+      { type: "text",  cap: "A run produces effort. A walk produces noticing. They're not the same currency.", d: "4wk" },
+    ],
+  },
+  {
+    id: "p-sora-quiet",
+    q: "What is a library doing that a café isn't?",
+    state: "active",
+    courtyardName: null,
+    courtyardTopic: null,
+    owner: "Sora M.",
+    kindred: [],
+    domain: "civic form",
+    dc: "teal",
+    age: "3 months",
+    last: "yesterday",
+    finds: 10,
+    notes: 3,
+    mileMarkers: [
+      { age: "3 months ago", q: "Why do I work better in libraries than at home?" },
+      { age: "6 weeks ago",  q: "What is a library doing that a café isn't?" },
+    ],
+    fl: [
+      { t: "Palaces for the People", s: "Eric Klinenberg", d: "3mo", i: "📖" },
+      { t: "On third places", s: "Ray Oldenburg — chapter scan", d: "10wk", i: "📖" },
+      { t: "The economics of the public library", s: "Brookings paper", d: "5wk", i: "📄" },
+      { t: "What happens when you defund a library", s: "Guardian longread", d: "2wk", i: "📰" },
+    ],
+    notesList: [
+      { type: "image", cap: "Sunday at the British Library — strangers concentrating in parallel. Café doesn't do this.", d: "5wk" },
+      { type: "text",  cap: "A library asks nothing of you. That's the whole technology.", d: "10d" },
+    ],
+  },
+];
+
 // COURTYARD: activity in BOTH directions.
 // (a) what others did to/about Maya's threads (incoming)
 // (b) what Maya did to/about others' threads (outgoing)
@@ -677,5 +772,5 @@ const ADJACENT_USERS = [
   { handle: "@dev_m",   thread: "Tech campuses as private cities" },
 ];
 
-export { PALETTE, DOMAIN, THREADS, KINDRED_THREADS, COURTYARD, TOWN_HALL, SEARCH_POSTURES, ADJACENT_USERS };
-export const WM = { PALETTE, DOMAIN, THREADS, KINDRED_THREADS, COURTYARD, TOWN_HALL, SEARCH_POSTURES, ADJACENT_USERS };
+export { PALETTE, DOMAIN, THREADS, KINDRED_THREADS, PERSONAL_THREADS, COURTYARD, TOWN_HALL, SEARCH_POSTURES, ADJACENT_USERS };
+export const WM = { PALETTE, DOMAIN, THREADS, KINDRED_THREADS, PERSONAL_THREADS, COURTYARD, TOWN_HALL, SEARCH_POSTURES, ADJACENT_USERS };
