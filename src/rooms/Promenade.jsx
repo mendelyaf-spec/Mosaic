@@ -180,8 +180,8 @@ function CourtyardHalo({ cluster, home }) {
     <div style={{
       position: 'absolute', left: home.x, top: home.y,
       transform: 'translate(-50%,-50%)',
-      width: 560, height: 560, borderRadius: '50%',
-      background: `radial-gradient(circle at center, hsla(${hue},45%,68%,0.12) 0%, hsla(${hue},45%,68%,0.05) 48%, transparent 72%)`,
+      width: 1100, height: 1100, borderRadius: '50%',
+      background: `radial-gradient(circle at center, hsla(${hue},45%,68%,0.14) 0%, hsla(${hue},45%,68%,0.06) 38%, transparent 68%)`,
       pointerEvents: 'none',
     }} />
   );
@@ -500,8 +500,8 @@ function ModeToggle({ mode, setMode }) {
 }
 
 // ─── The room ──────────────────────────────────────────────────────────
-const CANVAS_W = 3000;
-const CANVAS_H = 2000;
+const CANVAS_W = 4000;
+const CANVAS_H = 2700;
 
 export function PromenadeRoom({ navigate }) {
   const allItems = useMemo(() => getPromenadeItems(), []);
@@ -628,14 +628,9 @@ export function PromenadeRoom({ navigate }) {
               {clusters.map(c => homes[c.id] && (
                 <CourtyardHalo key={'h-'+c.id} cluster={c} home={homes[c.id]} />
               ))}
-              {/* courtyard labels — louder when zoomed out */}
+              {/* courtyard labels — always readable; the layout keeps cards out */}
               {clusters.map(c => homes[c.id] && (
-                <div key={'l-'+c.id} style={{
-                  opacity: zoom < 0.75 ? 0.9 : 0.45,
-                  transition: 'opacity .2s ease',
-                }}>
-                  <CourtyardLabel cluster={c} home={homes[c.id]} />
-                </div>
+                <CourtyardLabel key={'l-'+c.id} cluster={c} home={homes[c.id]} />
               ))}
               {/* cards */}
               {items.map((it, i) => {

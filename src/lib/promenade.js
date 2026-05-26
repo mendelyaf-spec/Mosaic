@@ -246,43 +246,61 @@ export function buildClusters(items) {
   return { clusters, loose };
 }
 
+// Layout constants — all in canvas pixels.
+//
+// A card is ~260 wide × 250 tall; half-diagonal ≈ 180. CARD_R is the
+// "personal space" radius — two cards never sit closer than 2·CARD_R.
+//
+// A courtyard label sits at the home and is ~320 × 90; we keep cards
+// out of an inner band (LABEL_KEEPOUT) so the name stays uncovered.
+// Cards in the ring then sit between RING_IN and RING_OUT.
+const CARD_R         = 220;
+const LABEL_KEEPOUT  = 340;   // no cards within this radius of a courtyard home
+const RING_IN        = LABEL_KEEPOUT;
+const RING_OUT       = 480;
+const CLUSTER_R      = RING_OUT + CARD_R; // outer reach of a courtyard cluster
+
 // Lay out cluster homes and loose-card positions in a single pass with
 // rejection sampling. Courtyards (tighter clusters of 3–5) seek the
 // centre; loose cards drift in the surrounding field, well-separated.
-export function layoutCards({ clusters, loose }, canvasW = 3000, canvasH = 2000) {
+export function layoutCards({ clusters, loose }, canvasW = 4000, canvasH = 2700) {
   const r = rng(42);
-  const pad = 240;
-  const placed = []; // { x, y, keepout }
+  const pad = 280;
+  // placed[] tracks every reserved spot: cluster homes and loose-card
+  // centres. `radius` is how far other things must stay away from this
+  // centre. We never let any two reserved circles overlap.
+  const placed = [];
   const homes  = {};
   const positions = new Map();
 
-  // 1) place each courtyard home (centre-biased), then scatter its items
-  //    in a tight ring around it. The whole cluster reserves a keepout
-  //    big enough that loose cards don't crowd it.
+  const reserve = (x, y, radius) => placed.push({ x, y, radius });
+  const clearOf = (x, y, radius) =>
+    placed.every(p => Math.hypot(p.x - x, p.y - y) > p.radius + radius);
+
+  // 1) place each courtyard home in the central two-thirds, then scatter
+  //    its items in a ring outside the label keepout. Each home reserves
+  //    CLUSTER_R so loose cards can't enter the ring.
   const courtyardsByHash = [...clusters].sort((a, b) => hash(a.id) - hash(b.id));
   for (const c of courtyardsByHash) {
     let tries = 0;
-    while (tries < 400) {
+    while (tries < 600) {
       const x = canvasW * 0.18 + r() * canvasW * 0.64;
       const y = canvasH * 0.20 + r() * canvasH * 0.60;
-      const ok = placed.every(p => Math.hypot(p.x - x, p.y - y) > 620 + p.keepout);
-      if (ok || tries > 380) {
+      if (clearOf(x, y, CLUSTER_R) || tries > 580) {
         homes[c.id] = { x, y };
-        placed.push({ x, y, keepout: 280 });
-        // scatter items in a ring
-        const ringIn  = 110;
-        const ringOut = 230;
+        reserve(x, y, CLUSTER_R);
+        // Scatter items around the ring, angularly spaced so they don't
+        // pile on top of each other.
         c.items.forEach((it, i) => {
           const ir = rng(hash(it.id));
-          // Spread items angularly so they don't pile on top of each other.
           const baseAngle = (i / c.items.length) * Math.PI * 2;
-          const angle = baseAngle + (ir() - 0.5) * 0.9;
-          const radius = ringIn + ir() * (ringOut - ringIn);
+          const angle = baseAngle + (ir() - 0.5) * 0.7;
+          const radius = RING_IN + ir() * (RING_OUT - RING_IN);
+          const cx = x + Math.cos(angle) * radius;
+          const cy = y + Math.sin(angle) * radius;
           positions.set(it.id, {
-            id: it.id,
-            x: x + Math.cos(angle) * radius,
-            y: y + Math.sin(angle) * radius,
-            rot: (ir() - 0.5) * 2.2,
+            id: it.id, x: cx, y: cy,
+            rot: (ir() - 0.5) * 1.8,
           });
         });
         break;
@@ -291,21 +309,21 @@ export function layoutCards({ clusters, loose }, canvasW = 3000, canvasH = 2000)
     }
   }
 
-  // 2) drop loose cards anywhere on the canvas that's clear of the
-  //    cluster keepouts and other loose cards.
+  // 2) drop loose cards anywhere clear of every reserved circle.
+  //    Each loose card itself reserves CARD_R so the next one keeps its
+  //    distance.
   for (const it of loose) {
     const ir = rng(hash(it.id));
     let tries = 0;
-    while (tries < 300) {
+    while (tries < 500) {
       const x = pad + r() * (canvasW - pad * 2);
       const y = pad + r() * (canvasH - pad * 2);
-      const ok = placed.every(p => Math.hypot(p.x - x, p.y - y) > 280 + p.keepout * 0.4);
-      if (ok || tries > 280) {
+      if (clearOf(x, y, CARD_R) || tries > 480) {
         positions.set(it.id, {
           id: it.id, x, y,
-          rot: (ir() - 0.5) * 3.0,
+          rot: (ir() - 0.5) * 2.6,
         });
-        placed.push({ x, y, keepout: 0 });
+        reserve(x, y, CARD_R);
         break;
       }
       tries++;
