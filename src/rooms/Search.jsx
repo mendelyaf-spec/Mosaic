@@ -443,7 +443,7 @@ function HistoryDrawer({ open, onClose, history, onRestore, onDelete, onClear })
   );
 }
 
-export function SearchRoom({ navigate, fromThreadId, deepenCard }) {
+export function SearchRoom({ navigate, fromThreadId, deepenCard, settingsParam }) {
   // Resolve through getThreadById so saved DOS threads (user storage) and
   // appended-to seed copies are found too — not just the seeded pool.
   const fromThread = useMemo(() => {
@@ -494,7 +494,22 @@ export function SearchRoom({ navigate, fromThreadId, deepenCard }) {
   // idle | characterizing | filling | done | reviewing | diffing | diffed | error
   const [phase, setPhase] = useState('idle');
   const [error, setError] = useState(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Settings open/closed lives in the URL hash (?settings=1) so the page
+  // is deep-linkable in either state. Toggling re-navigates rather than
+  // flipping a local boolean.
+  const settingsOpen = settingsParam === '1' || settingsParam === 'open';
+  const navWithSettings = (open) => {
+    const p = {};
+    if (fromThreadId) p.from = fromThreadId;
+    if (deepenCard)   p.deepen = deepenCard;
+    if (open)         p.settings = '1';
+    navigate('search', p);
+  };
+  const setSettingsOpen = (next) => {
+    const wantOpen = typeof next === 'function' ? next(settingsOpen) : next;
+    if (!!wantOpen === settingsOpen) return;
+    navWithSettings(!!wantOpen);
+  };
   const [signals, setSignals] = useState({});   // moveId -> 'moved' | 'dismiss' | null
   const [evolvedQ, setEvolvedQ] = useState('');
   const [diffMoves, setDiffMoves] = useState([]);
