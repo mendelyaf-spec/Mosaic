@@ -453,24 +453,38 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
   // Maya's own threads carry no owner field; kindred threads (walked into
   // from the courtyard) carry the holder's name.
   const ownerLabel = thread.owner || "Maya R.";
-  // Use a real <a href="#room=home"> so the browser handles navigation natively
-  // — no JS handlers to fail, no event-bubbling traps with the canvas.
+  // Owner-card behavior depends on context:
+  //   - In ThreadExpansion (opened from home), `onClose` dismisses the overlay.
+  //   - On a standalone thread page for *your* thread, click goes home.
+  //   - On someone else's thread, the card is informational only (no nav target
+  //     — clicking shouldn't send Maya to her own home from Priya's thread).
+  const ownThread = isOwnThread(thread.id);
+  const inExpansion = typeof onClose === "function";
+  const ownerCardClickable = ownThread || inExpansion;
+  const ownerCardSubtext = inExpansion
+    ? (ownThread ? "your thread · click to close" : `${ownerLabel}’s thread · click to close`)
+    : (ownThread ? "your thread · click to go home" : `${ownerLabel}’s thread · you can read it, not edit it`);
+  const handleOwnerClick = (e) => {
+    if (!ownerCardClickable) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (inExpansion) onClose();
+    else navigate("home");
+  };
   const identityCard = (
-    <a href="#room=home"
-       data-ui
-       title="Back to home"
-       style={{
+    <div data-ui
+         onClick={handleOwnerClick}
+         onPointerUp={handleOwnerClick}
+         title={ownerCardClickable ? (inExpansion ? "Close" : "Back to home") : undefined}
+         style={{
       position: "fixed", top: 24, right: 28, zIndex: 50,
       maxWidth: 260, textAlign: "right",
-      cursor: "pointer",
+      cursor: ownerCardClickable ? "pointer" : "default",
       padding: "6px 10px",
       borderRadius: 8,
       transition: "background .15s ease",
-      display: "block",
-      textDecoration: "none",
-      color: "inherit",
     }}
-    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(26,23,20,.06)"; }}
+    onMouseEnter={(e) => { if (ownerCardClickable) e.currentTarget.style.background = "rgba(26,23,20,.06)"; }}
     onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
       <div style={{
         fontSize: 9.5, letterSpacing: ".15em", textTransform: "uppercase",
@@ -484,8 +498,8 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
       <p style={{
         fontSize: 11.5, color: "#5E5A55", fontWeight: 300, margin: "6px 0 0",
         lineHeight: 1.4, pointerEvents: "none",
-      }}>{isOwnThread(thread.id) ? "your thread · click to go home" : `${ownerLabel}’s thread · click to go home`}</p>
-    </a>
+      }}>{ownerCardSubtext}</p>
+    </div>
   );
 
   // View-mode toggle — top-left, mirrors home's chrome
