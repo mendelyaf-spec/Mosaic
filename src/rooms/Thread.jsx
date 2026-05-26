@@ -442,9 +442,13 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
   // from the courtyard) carry the holder's name.
   const ownerLabel = thread.owner || "Maya R.";
   const identityCard = (
-    <div data-ui style={{
+    <div data-ui
+         onClick={() => navigate("home")}
+         title="Back to home"
+         style={{
       position: "fixed", top: 24, right: 28, zIndex: 20,
       maxWidth: 260, textAlign: "right",
+      cursor: "pointer",
     }}>
       <div style={{
         fontSize: 9.5, letterSpacing: ".15em", textTransform: "uppercase",
