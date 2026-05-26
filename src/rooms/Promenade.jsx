@@ -628,6 +628,38 @@ export function PromenadeRoom({ navigate }) {
               {clusters.map(c => homes[c.id] && (
                 <CourtyardHalo key={'h-'+c.id} cluster={c} home={homes[c.id]} />
               ))}
+              {/* tether lines from each clustered item back to its courtyard
+                  home. Starts just past the label keepout, ends just before
+                  the card edge — drawn under the cards. */}
+              <svg style={{
+                position: 'absolute', left: 0, top: 0,
+                width: CANVAS_W, height: CANVAS_H,
+                pointerEvents: 'none', overflow: 'visible',
+              }}>
+                {clusters.flatMap(c => {
+                  const home = homes[c.id];
+                  if (!home) return [];
+                  return c.items.map(it => {
+                    const p = positions.get(it.id);
+                    if (!p) return null;
+                    const dx = p.x - home.x, dy = p.y - home.y;
+                    const len = Math.hypot(dx, dy) || 1;
+                    const ux = dx / len, uy = dy / len;
+                    const sx = home.x + ux * 220;
+                    const sy = home.y + uy * 220;
+                    const ex = p.x - ux * 130;
+                    const ey = p.y - uy * 130;
+                    return (
+                      <line key={it.id}
+                        x1={sx} y1={sy} x2={ex} y2={ey}
+                        stroke={`hsl(${c.hue}, 40%, 30%)`}
+                        strokeWidth={2}
+                        strokeOpacity={0.32}
+                        strokeDasharray="7 8" />
+                    );
+                  });
+                })}
+              </svg>
               {/* courtyard labels — always readable; the layout keeps cards out */}
               {clusters.map(c => homes[c.id] && (
                 <CourtyardLabel key={'l-'+c.id} cluster={c} home={homes[c.id]} />
