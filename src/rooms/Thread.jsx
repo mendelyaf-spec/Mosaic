@@ -1195,27 +1195,6 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
             pointerEvents: "none",
           }} />
 
-          {/* Mile-marker arc — dashed, from oldest (upper-left) to newest (upper-right) */}
-          <svg style={{
-            position: "absolute",
-            left: cx - rInner, top: cy - rInner,
-            width: rInner * 2, height: rInner * 2,
-            pointerEvents: "none", overflow: "visible",
-          }}>
-            {(() => {
-              const a0 = arcStart, a1 = arcStart + arcRange;
-              const x0 = rInner + Math.cos(a0) * rInner;
-              const y0 = rInner + Math.sin(a0) * rInner;
-              const x1 = rInner + Math.cos(a1) * rInner;
-              const y1 = rInner + Math.sin(a1) * rInner;
-              return (
-                <path d={`M ${x0} ${y0} A ${rInner} ${rInner} 0 1 1 ${x1} ${y1}`}
-                      fill="none" stroke={palette.accent + "66"}
-                      strokeWidth={2} strokeDasharray="6 5" />
-              );
-            })()}
-          </svg>
-
           {/* Title card at canvas center — the question the orbit gathers around */}
           <div data-card style={{
             position: "absolute", left: cx, top: cy,
