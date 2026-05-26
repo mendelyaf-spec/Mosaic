@@ -21,7 +21,7 @@
 //   4. save to a thread               — real
 //   5. spawn a new thread             — real
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Room, PanZoomCanvas, Breadcrumb,
 } from '../shell/shell.jsx';
@@ -221,8 +221,16 @@ function EventComposer({ item, onSend, onCancel }) {
   const [kind, setKind] = useState('live');
   const [when, setWhen] = useState('');
   const [note, setNote] = useState('');
+  const ref = useRef(null);
+  const noteRef = useRef(null);
+  useEffect(() => {
+    // Scroll the composer into view inside the focus card and focus the
+    // note field, so the click reads as an immediate response.
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    setTimeout(() => noteRef.current?.focus(), 220);
+  }, []);
   return (
-    <div style={{
+    <div ref={ref} style={{
       marginTop: 14, padding: '14px 16px',
       background: P.paper,
       border: `1px solid ${P.paperEdge}`, borderRadius: 2,
@@ -250,6 +258,7 @@ function EventComposer({ item, onSend, onCancel }) {
           }} />
       </div>
       <textarea
+        ref={noteRef}
         placeholder="why this — one line is fine"
         value={note} onChange={e => setNote(e.target.value)}
         rows={2}
@@ -378,8 +387,16 @@ function FocusCard({ item, ownCourtyards, onAction, navigate, onPrev, onNext, po
               request to merge threads
             </button>
           )}
-          <button onClick={() => setComposing(true)} style={secondaryBtn()}>
-            propose an event
+          <button
+            onClick={() => setComposing(true)}
+            disabled={composing}
+            style={{
+              ...secondaryBtn(),
+              ...(composing ? { background: P.markSoft, cursor: 'default' } : null),
+            }}
+            onMouseEnter={(e) => { if (!composing) e.currentTarget.style.background = P.markSoft; }}
+            onMouseLeave={(e) => { if (!composing) e.currentTarget.style.background = 'transparent'; }}>
+            {composing ? 'composing event…' : 'propose an event'}
           </button>
           <select
             defaultValue=""
