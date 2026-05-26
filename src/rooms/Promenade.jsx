@@ -29,8 +29,7 @@ import {
   addFindToThread, getAllThreads, isOwnThread, spawnThreadFromCard,
 } from '../lib/threads.js';
 import {
-  getPromenadeItems, buildClusters, layoutClusters, scatterInCluster,
-  ownCourtyardNames,
+  getPromenadeItems, buildClusters, layoutCards, ownCourtyardNames,
 } from '../lib/promenade.js';
 import { Thumbnail } from './PromenadeThumbnail.jsx';
 
@@ -172,53 +171,44 @@ function KindGlyph({ kind }) {
   return <svg {...common}><path d="M1 1 L9 1 M1 9 L9 9" stroke={s} strokeWidth="1"/></svg>;
 }
 
-// ─── Cluster halo + label ──────────────────────────────────────────────
-function ClusterHalo({ cluster, home }) {
-  const r = cluster.kind === 'courtyard' ? 440 : 260;
+// ─── Courtyard halo + label ────────────────────────────────────────────
+// Only courtyards get a halo and label. Personal-thread items are loose
+// singletons in the field — their owner shows on the card itself.
+function CourtyardHalo({ cluster, home }) {
   const hue = cluster.hue;
   return (
     <div style={{
       position: 'absolute', left: home.x, top: home.y,
       transform: 'translate(-50%,-50%)',
-      width: r * 2, height: r * 2, borderRadius: '50%',
-      background: cluster.kind === 'courtyard'
-        ? `radial-gradient(circle at center, hsla(${hue},45%,68%,0.10) 0%, hsla(${hue},45%,68%,0.04) 50%, transparent 72%)`
-        : `radial-gradient(circle at center, hsla(${hue},35%,72%,0.06) 0%, transparent 70%)`,
+      width: 560, height: 560, borderRadius: '50%',
+      background: `radial-gradient(circle at center, hsla(${hue},45%,68%,0.12) 0%, hsla(${hue},45%,68%,0.05) 48%, transparent 72%)`,
       pointerEvents: 'none',
     }} />
   );
 }
 
-function ClusterLabel({ cluster, home }) {
+function CourtyardLabel({ cluster, home }) {
   const hue = cluster.hue;
-  const isCourtyard = cluster.kind === 'courtyard';
   return (
     <div style={{
       position: 'absolute', left: home.x, top: home.y,
       transform: 'translate(-50%,-50%)',
-      width: 360, textAlign: 'center', pointerEvents: 'none',
+      width: 320, textAlign: 'center', pointerEvents: 'none',
     }}>
       <div style={{
-        fontFamily: MONO, fontSize: 11, letterSpacing: '.22em',
+        fontFamily: MONO, fontSize: 10, letterSpacing: '.22em',
         textTransform: 'uppercase',
-        color: isCourtyard ? `hsl(${hue}, 35%, 32%)` : P.inkFaint,
+        color: `hsl(${hue}, 35%, 32%)`,
         marginBottom: 4, fontWeight: 600,
-      }}>
-        {isCourtyard ? 'the courtyard' : 'personal thread'}
-      </div>
+      }}>the courtyard</div>
       <div style={{
-        fontFamily: SERIF, fontStyle: 'italic', fontSize: 22,
-        fontWeight: 400, lineHeight: 1.2,
-        color: isCourtyard ? P.ink : P.inkSoft,
+        fontFamily: SERIF, fontStyle: 'italic', fontSize: 20,
+        fontWeight: 400, lineHeight: 1.2, color: P.ink,
         textWrap: 'balance',
-      }}>
-        {isCourtyard
-          ? cluster.label.replace(/^the /, '').replace(/ courtyard$/, '')
-          : cluster.owner}
-      </div>
-      {isCourtyard && (
+      }}>{cluster.name}</div>
+      {cluster.topic && (
         <div style={{
-          marginTop: 5, fontFamily: SANS, fontSize: 11,
+          marginTop: 4, fontFamily: SANS, fontSize: 10.5,
           color: P.inkFaint, fontStyle: 'italic',
         }}>{cluster.topic}</div>
       )}
@@ -510,25 +500,24 @@ function ModeToggle({ mode, setMode }) {
 }
 
 // ─── The room ──────────────────────────────────────────────────────────
-const CANVAS_W = 3200;
-const CANVAS_H = 2200;
+const CANVAS_W = 3000;
+const CANVAS_H = 2000;
 
 export function PromenadeRoom({ navigate }) {
-  const items = useMemo(() => getPromenadeItems(), []);
-  const clusters = useMemo(() => buildClusters(items), [items]);
-  const homes = useMemo(() => layoutClusters(clusters, CANVAS_W, CANVAS_H), [clusters]);
+  const allItems = useMemo(() => getPromenadeItems(), []);
+  const { clusters, loose } = useMemo(() => buildClusters(allItems), [allItems]);
+  const { positions, homes } = useMemo(
+    () => layoutCards({ clusters, loose }, CANVAS_W, CANVAS_H),
+    [clusters, loose]
+  );
   const ownCourtyards = useMemo(() => ownCourtyardNames(), []);
 
-  // Item positions = scatter inside their cluster's home.
-  const positions = useMemo(() => {
-    const out = new Map();
-    for (const c of clusters) {
-      const home = homes[c.id];
-      if (!home) continue;
-      for (const p of scatterInCluster(c, home)) out.set(p.id, p);
-    }
-    return out;
-  }, [clusters, homes]);
+  // Items actually rendered = clustered items + loose items. Drop the rest.
+  const items = useMemo(() => {
+    const clusteredIds = new Set(clusters.flatMap(c => c.items.map(i => i.id)));
+    const looseIds     = new Set(loose.map(i => i.id));
+    return allItems.filter(it => clusteredIds.has(it.id) || looseIds.has(it.id));
+  }, [allItems, clusters, loose]);
 
   const [mode, setMode] = useState('wander');
   const [focusedIdx, setFocusedIdx] = useState(null);
@@ -635,17 +624,17 @@ export function PromenadeRoom({ navigate }) {
           const detail = zoom < 0.55 ? 'compact' : 'full';
           return (
             <>
-              {/* halos first (so they sit under everything) */}
+              {/* courtyard halos sit under everything */}
               {clusters.map(c => homes[c.id] && (
-                <ClusterHalo key={'h-'+c.id} cluster={c} home={homes[c.id]} />
+                <CourtyardHalo key={'h-'+c.id} cluster={c} home={homes[c.id]} />
               ))}
-              {/* cluster labels — only readable when zoomed out / hovering */}
+              {/* courtyard labels — louder when zoomed out */}
               {clusters.map(c => homes[c.id] && (
                 <div key={'l-'+c.id} style={{
-                  opacity: zoom < 0.75 ? 0.85 : 0.4,
+                  opacity: zoom < 0.75 ? 0.9 : 0.45,
                   transition: 'opacity .2s ease',
                 }}>
-                  <ClusterLabel cluster={c} home={homes[c.id]} />
+                  <CourtyardLabel cluster={c} home={homes[c.id]} />
                 </div>
               ))}
               {/* cards */}

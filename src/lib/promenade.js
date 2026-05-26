@@ -172,94 +172,147 @@ export function getPromenadeItems() {
   return items;
 }
 
-// ─── Clustering ────────────────────────────────────────────────────────
-// One cluster per courtyardName; one per personal thread. The cluster
-// carries its items, a label, a hue (for the soft halo), and a "weight"
-// hint that controls how much space it reserves in layout.
-export function buildClusters(items) {
-  const groups = new Map();
+// ─── Splitting items into courtyards + loose singletons ───────────────
+// Only items whose source thread sits in a courtyard get clustered.
+// Personal-thread items each become a standalone card in the field —
+// no cluster, no halo, no label. The owner stays on each card so
+// identity isn't lost.
+//
+// Courtyards are capped to a small number of items (3–5, varied per
+// courtyard by stable hash) so each cluster reads as a constellation,
+// not a pile. Items kept per courtyard are picked deterministically to
+// favour variety of media kind and a mix of owners.
+const MAX_PER_COURTYARD_LO = 3;
+const MAX_PER_COURTYARD_HI = 5;
+
+function pickRepresentatives(items, n) {
+  // Diversify by kind + owner. We rotate through (kind, owner) buckets
+  // and take the first item from each bucket until we have n items.
+  const buckets = new Map();
   for (const it of items) {
-    const key = it.courtyardName ? `c-${it.courtyardName}` : `p-${it.threadId}`;
-    if (!groups.has(key)) {
-      groups.set(key, {
-        id: key,
-        kind: it.inCourtyard ? 'courtyard' : 'personal',
-        label: it.inCourtyard
-          ? `the ${it.courtyardName} courtyard`
-          : `${it.owner}'s personal thread`,
-        topic: it.courtyardTopic || it.threadQ,
-        owner: it.inCourtyard ? null : it.owner,
-        items: [],
-        hue: pickHue(hash(key)),
-      });
-    }
-    groups.get(key).items.push(it);
+    const key = `${it.kind}|${it.owner}|${it.media?.kind || 'plain'}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(it);
   }
-  return Array.from(groups.values());
+  const keys = Array.from(buckets.keys());
+  // Stable order across keys based on hash of the key string.
+  keys.sort((a, b) => hash(a) - hash(b));
+  const out = [];
+  let cursor = 0;
+  while (out.length < n && keys.length > 0) {
+    const k = keys[cursor % keys.length];
+    const bucket = buckets.get(k);
+    if (bucket && bucket.length) {
+      out.push(bucket.shift());
+      cursor++;
+    } else {
+      keys.splice(cursor % keys.length, 1);
+    }
+    if (keys.length === 0) break;
+  }
+  return out;
 }
 
-// Lay out cluster homes with rejection sampling against a minimum
-// distance. Courtyard clusters reserve more space than personal ones.
-export function layoutClusters(clusters, canvasW = 3200, canvasH = 2200) {
-  // Courtyards seek the center; personal threads tend toward the edges.
-  // We do this by trying centre-biased coords for courtyards and edge-biased
-  // coords for personal clusters before falling back to uniform random.
-  const r = rng(42);
-  const pad = 280;
-  const placed = [];
-  const homes  = {};
-
-  // Sort: courtyards first (claim the centre), personal after.
-  const sorted = [...clusters].sort((a, b) =>
-    (a.kind === 'courtyard' ? 0 : 1) - (b.kind === 'courtyard' ? 0 : 1));
-
-  for (const c of sorted) {
-    const minDist = c.kind === 'courtyard' ? 880 : 540;
-    let tries = 0;
-    while (tries < 500) {
-      let x, y;
-      if (c.kind === 'courtyard') {
-        // Bias toward the central two-thirds.
-        x = canvasW * 0.18 + r() * canvasW * 0.64;
-        y = canvasH * 0.20 + r() * canvasH * 0.60;
-      } else {
-        // Edge band: 0–25% or 75–100% along at least one axis.
-        const edgeAxis = r() > 0.5;
-        x = edgeAxis
-          ? (r() < 0.5 ? pad + r() * canvasW * 0.20 : canvasW * 0.80 + r() * (canvasW * 0.20 - pad))
-          : pad + r() * (canvasW - pad * 2);
-        y = edgeAxis
-          ? pad + r() * (canvasH - pad * 2)
-          : (r() < 0.5 ? pad + r() * canvasH * 0.20 : canvasH * 0.80 + r() * (canvasH * 0.20 - pad));
+export function buildClusters(items) {
+  const grouped = new Map();
+  const loose   = [];
+  for (const it of items) {
+    if (it.courtyardName) {
+      const key = `c-${it.courtyardName}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          id: key,
+          kind: 'courtyard',
+          name: it.courtyardName,
+          label: `the ${it.courtyardName} courtyard`,
+          topic: it.courtyardTopic || '',
+          items: [],
+          hue: pickHue(hash(key)),
+        });
       }
-      const ok = placed.every(p => Math.hypot(p.x - x, p.y - y) > Math.max(minDist, p.minDist));
-      if (ok || tries > 480) {
+      grouped.get(key).items.push(it);
+    } else {
+      loose.push(it);
+    }
+  }
+
+  // Cap each courtyard to a stable 3–5 representative items.
+  const clusters = Array.from(grouped.values()).map(c => {
+    const span = MAX_PER_COURTYARD_HI - MAX_PER_COURTYARD_LO + 1;
+    const n = MAX_PER_COURTYARD_LO + (hash(c.id) % span);
+    return { ...c, items: pickRepresentatives(c.items, n) };
+  });
+
+  return { clusters, loose };
+}
+
+// Lay out cluster homes and loose-card positions in a single pass with
+// rejection sampling. Courtyards (tighter clusters of 3–5) seek the
+// centre; loose cards drift in the surrounding field, well-separated.
+export function layoutCards({ clusters, loose }, canvasW = 3000, canvasH = 2000) {
+  const r = rng(42);
+  const pad = 240;
+  const placed = []; // { x, y, keepout }
+  const homes  = {};
+  const positions = new Map();
+
+  // 1) place each courtyard home (centre-biased), then scatter its items
+  //    in a tight ring around it. The whole cluster reserves a keepout
+  //    big enough that loose cards don't crowd it.
+  const courtyardsByHash = [...clusters].sort((a, b) => hash(a.id) - hash(b.id));
+  for (const c of courtyardsByHash) {
+    let tries = 0;
+    while (tries < 400) {
+      const x = canvasW * 0.18 + r() * canvasW * 0.64;
+      const y = canvasH * 0.20 + r() * canvasH * 0.60;
+      const ok = placed.every(p => Math.hypot(p.x - x, p.y - y) > 620 + p.keepout);
+      if (ok || tries > 380) {
         homes[c.id] = { x, y };
-        placed.push({ x, y, minDist });
+        placed.push({ x, y, keepout: 280 });
+        // scatter items in a ring
+        const ringIn  = 110;
+        const ringOut = 230;
+        c.items.forEach((it, i) => {
+          const ir = rng(hash(it.id));
+          // Spread items angularly so they don't pile on top of each other.
+          const baseAngle = (i / c.items.length) * Math.PI * 2;
+          const angle = baseAngle + (ir() - 0.5) * 0.9;
+          const radius = ringIn + ir() * (ringOut - ringIn);
+          positions.set(it.id, {
+            id: it.id,
+            x: x + Math.cos(angle) * radius,
+            y: y + Math.sin(angle) * radius,
+            rot: (ir() - 0.5) * 2.2,
+          });
+        });
         break;
       }
       tries++;
     }
   }
-  return homes;
-}
 
-// Scatter items inside a cluster around its home. Courtyard items get a
-// slightly wider ring than personal-thread items.
-export function scatterInCluster(cluster, home) {
-  const ringIn  = cluster.kind === 'courtyard' ? 160 : 110;
-  const ringOut = cluster.kind === 'courtyard' ? 380 : 220;
-  return cluster.items.map(it => {
-    const r = rng(hash(it.id));
-    const angle = r() * Math.PI * 2;
-    const radius = ringIn + r() * (ringOut - ringIn);
-    return {
-      id: it.id,
-      x: home.x + Math.cos(angle) * radius,
-      y: home.y + Math.sin(angle) * radius,
-      rot: (r() - 0.5) * 2.2,
-    };
-  });
+  // 2) drop loose cards anywhere on the canvas that's clear of the
+  //    cluster keepouts and other loose cards.
+  for (const it of loose) {
+    const ir = rng(hash(it.id));
+    let tries = 0;
+    while (tries < 300) {
+      const x = pad + r() * (canvasW - pad * 2);
+      const y = pad + r() * (canvasH - pad * 2);
+      const ok = placed.every(p => Math.hypot(p.x - x, p.y - y) > 280 + p.keepout * 0.4);
+      if (ok || tries > 280) {
+        positions.set(it.id, {
+          id: it.id, x, y,
+          rot: (ir() - 0.5) * 3.0,
+        });
+        placed.push({ x, y, keepout: 0 });
+        break;
+      }
+      tries++;
+    }
+  }
+
+  return { positions, homes };
 }
 
 // The user's "kindred courtyards" — already-joined.
