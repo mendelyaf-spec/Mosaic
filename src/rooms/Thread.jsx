@@ -453,23 +453,22 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
   // Maya's own threads carry no owner field; kindred threads (walked into
   // from the courtyard) carry the holder's name.
   const ownerLabel = thread.owner || "Maya R.";
-  const goHome = (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    navigate("home");
-  };
+  // Use a real <a href="#room=home"> so the browser handles navigation natively
+  // — no JS handlers to fail, no event-bubbling traps with the canvas.
   const identityCard = (
-    <div data-ui
-         onClick={goHome}
-         onPointerUp={goHome}
-         title="Back to home"
-         style={{
+    <a href="#room=home"
+       data-ui
+       title="Back to home"
+       style={{
       position: "fixed", top: 24, right: 28, zIndex: 50,
       maxWidth: 260, textAlign: "right",
       cursor: "pointer",
       padding: "6px 10px",
       borderRadius: 8,
       transition: "background .15s ease",
+      display: "block",
+      textDecoration: "none",
+      color: "inherit",
     }}
     onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(26,23,20,.06)"; }}
     onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
@@ -486,7 +485,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
         fontSize: 11.5, color: "#5E5A55", fontWeight: 300, margin: "6px 0 0",
         lineHeight: 1.4, pointerEvents: "none",
       }}>{isOwnThread(thread.id) ? "your thread · click to go home" : `${ownerLabel}’s thread · click to go home`}</p>
-    </div>
+    </a>
   );
 
   // View-mode toggle — top-left, mirrors home's chrome

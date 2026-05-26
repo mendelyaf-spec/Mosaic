@@ -992,7 +992,13 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
               // Start at top (12 o'clock) and walk clockwise.
               const theta = -Math.PI / 2 + (ti / N) * Math.PI * 2;
               const r = 520;
-              pos = { x: cx + Math.cos(theta) * r, y: cy + Math.sin(theta) * r };
+              // ThreadCluster is anchored top-left (width 380, ~200 tall);
+              // subtract half-extents so the visual centers sit on the ring.
+              const CARD_W = 380, CARD_H = 200;
+              pos = {
+                x: cx + Math.cos(theta) * r - CARD_W / 2,
+                y: cy + Math.sin(theta) * r - CARD_H / 2,
+              };
             } else {
               const seedPos = layout[t.id];
               pos = seedPos || (() => {
