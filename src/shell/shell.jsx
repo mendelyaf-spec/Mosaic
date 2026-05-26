@@ -152,9 +152,7 @@ function Aperture({
 
   return (
     <>
-      {/* the bay — a paper-toned recess in the margin */}
-      <div data-aperture-bay style={bayStyle} aria-hidden="true" />
-      {/* the door itself — sits inside the bay */}
+      {/* the door itself — bay removed; door floats directly on the room */}
       <div data-aperture style={doorOuter}
            onMouseEnter={() => setHover(true)}
            onMouseLeave={() => setHover(false)}
