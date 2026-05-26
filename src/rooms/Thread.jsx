@@ -458,7 +458,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
          onClick={() => navigate("home")}
          title="Back to home"
          style={{
-      position: "fixed", top: 24, right: 28, zIndex: 20,
+      position: "fixed", top: 24, right: 28, zIndex: 30,
       maxWidth: 260, textAlign: "right",
       cursor: "pointer",
     }}>
