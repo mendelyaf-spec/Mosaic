@@ -443,7 +443,7 @@ function HistoryDrawer({ open, onClose, history, onRestore, onDelete, onClear })
   );
 }
 
-export function SearchRoom({ navigate, fromThreadId, deepenCard, settingsParam }) {
+export function SearchRoom({ navigate, fromThreadId, deepenCard, settingsParam, queryParam }) {
   // Resolve through getThreadById so saved DOS threads (user storage) and
   // appended-to seed copies are found too — not just the seeded pool.
   const fromThread = useMemo(() => {
@@ -483,10 +483,12 @@ export function SearchRoom({ navigate, fromThreadId, deepenCard, settingsParam }
     [prefsState.selectedMoves, allMoves]
   );
 
-  // Deepen-a-card opens blank — the pinned card is the context, the user
-  // brings a fresh question. A plain DOS-from-thread still prefills the
-  // thread's current question.
-  const [input, setInput] = useState(deepen ? '' : (fromThread ? fromThread.q : ''));
+  // Initial input: ?q= in the URL wins (deep link), else deepen-a-card is
+  // blank (the pinned card is the context), else a DOS-from-thread prefills
+  // the thread's current question.
+  const [input, setInput] = useState(
+    queryParam || (deepen ? '' : (fromThread ? fromThread.q : ''))
+  );
   const [submitted, setSubmitted] = useState(null);
   const [characterization, setCharacterization] = useState(null);
   const [items, setItems] = useState({}); // moveId -> item
@@ -494,21 +496,21 @@ export function SearchRoom({ navigate, fromThreadId, deepenCard, settingsParam }
   // idle | characterizing | filling | done | reviewing | diffing | diffed | error
   const [phase, setPhase] = useState('idle');
   const [error, setError] = useState(null);
-  // Settings open/closed lives in the URL hash (?settings=1) so the page
-  // is deep-linkable in either state. Toggling re-navigates rather than
-  // flipping a local boolean.
+  // Settings and the active query both live in the URL hash so the page is
+  // deep-linkable. Toggling settings or submitting a search re-navigates.
   const settingsOpen = settingsParam === '1' || settingsParam === 'open';
-  const navWithSettings = (open) => {
+  const navSearch = ({ settings, q } = {}) => {
     const p = {};
     if (fromThreadId) p.from = fromThreadId;
     if (deepenCard)   p.deepen = deepenCard;
-    if (open)         p.settings = '1';
+    if (settings)     p.settings = '1';
+    if (q)            p.q = q;
     navigate('search', p);
   };
   const setSettingsOpen = (next) => {
     const wantOpen = typeof next === 'function' ? next(settingsOpen) : next;
     if (!!wantOpen === settingsOpen) return;
-    navWithSettings(!!wantOpen);
+    navSearch({ settings: !!wantOpen, q: queryParam });
   };
   const [signals, setSignals] = useState({});   // moveId -> 'moved' | 'dismiss' | null
   const [evolvedQ, setEvolvedQ] = useState('');
@@ -540,6 +542,8 @@ export function SearchRoom({ navigate, fromThreadId, deepenCard, settingsParam }
 
   const run = async (text) => {
     if (!text.trim() || selectedMoves.length === 0) return;
+    // Push the query into the URL so this search is linkable.
+    if (text !== queryParam) navSearch({ settings: settingsOpen, q: text });
     setSubmitted(text);
     setItems({});
     setSignals({});
@@ -591,6 +595,20 @@ export function SearchRoom({ navigate, fromThreadId, deepenCard, settingsParam }
     setEvolvedQ(submitted || input);
     setPhase('reviewing');
   };
+
+  // Auto-run when the page loads with a ?q= query in the URL (deep link).
+  // Fires once per distinct queryParam, only if nothing's already in flight
+  // or completed for that exact query.
+  const autoRanRef = useRef(null);
+  useEffect(() => {
+    if (!queryParam) return;
+    if (autoRanRef.current === queryParam) return;
+    if (submitted === queryParam) return;
+    if (selectedMoves.length === 0) return;
+    autoRanRef.current = queryParam;
+    run(queryParam);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryParam, selectedMoves.length]);
 
   const runDiff = async () => {
     setPhase('diffing');
