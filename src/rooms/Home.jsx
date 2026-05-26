@@ -15,7 +15,7 @@ import { WM } from '../data/wm-data.js';
 import { getAllThreads, getThreadById } from '../lib/threads.js';
 import { ThreadRoom } from './Thread.jsx';
 
-function ThreadCluster({ thread, pos, onOpen }) {
+function ThreadCluster({ thread, pos, onOpen, centerAnchor = false }) {
   const pal = WM.DOMAIN[thread.dc];
   const [hover, setHover] = useStateH(false);
   const [showReframes, setShowReframes] = useStateH(false);
@@ -48,7 +48,9 @@ function ThreadCluster({ thread, pos, onOpen }) {
       position: "absolute", left: pos.x, top: pos.y,
       width: 380, cursor: "pointer",
       transition: "transform .25s cubic-bezier(.4,0,.2,1)",
-      transform: hover ? "translateY(-3px)" : "translateY(0)",
+      transform: centerAnchor
+        ? (hover ? "translate(-50%, calc(-50% - 3px))" : "translate(-50%, -50%)")
+        : (hover ? "translateY(-3px)" : "translateY(0)"),
     }}>
       {thread.mileMarkers && thread.mileMarkers.length > 1 && (
         <div style={{ paddingLeft: 14, marginBottom: 6 }}>
@@ -948,57 +950,21 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
           })()}
           <style>{`@keyframes wmArtIn{from{opacity:0;transform:translate(-50%,-50%) scale(.9)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}`}</style>
 
-          {/* Persona at the canvas center, with threads orbiting — only in the
-              default "all" view. Period drill-downs keep their time-box layout. */}
-          {!isNested && (() => {
-            const cx = canvasW / 2, cy = canvasH / 2;
-            return (
-              <div data-ui style={{
-                position: "absolute", left: cx, top: cy,
-                transform: "translate(-50%,-50%)",
-                width: 280, padding: "26px 28px 22px",
-                background: "#FAF5E9",
-                border: "1.5px solid rgba(26,92,70,.45)",
-                borderRadius: 14,
-                boxShadow: "0 18px 50px rgba(26,92,70,.18), 0 2px 10px rgba(26,23,20,.06)",
-                textAlign: "center",
-                zIndex: 4,
-                pointerEvents: "none",
-              }}>
-                <div style={{
-                  fontSize: 9.5, letterSpacing: ".15em", textTransform: "uppercase",
-                  color: "#9A968F", marginBottom: 8, fontFamily: FH,
-                }}>Mosaic · Hawley, PA</div>
-                <h2 style={{
-                  fontFamily: SH, fontStyle: "italic", fontSize: 32, fontWeight: 300,
-                  margin: 0, lineHeight: 1, color: "#1A1714", letterSpacing: "-.01em",
-                }}>{personaLabel}</h2>
-                <div style={{
-                  marginTop: 10, fontSize: 11, fontFamily: FH, color: "#5E5A55",
-                }}>{threads.length} {threads.length === 1 ? "thread" : "threads"} held</div>
-              </div>
-            );
-          })()}
-
           {threads.map((t, ti) => {
             const a = activity[t.id] ?? 1;
             // In the default view, lay threads out in an orbit around the
-            // persona at canvas center; in period drill-downs keep the
-            // hand-tuned layout (or fallback grid for user-created threads).
-            let pos;
+            // (now-empty) canvas center; each cluster anchors at its own
+            // visual center so all sit exactly the same distance from center.
+            // In period drill-downs keep the hand-tuned top-left layout.
+            let pos, centerAnchor = false;
             if (!isNested) {
               const cx = canvasW / 2, cy = canvasH / 2;
               const N = Math.max(threads.length, 1);
               // Start at top (12 o'clock) and walk clockwise.
               const theta = -Math.PI / 2 + (ti / N) * Math.PI * 2;
               const r = 520;
-              // ThreadCluster is anchored top-left (width 380, ~200 tall);
-              // subtract half-extents so the visual centers sit on the ring.
-              const CARD_W = 380, CARD_H = 200;
-              pos = {
-                x: cx + Math.cos(theta) * r - CARD_W / 2,
-                y: cy + Math.sin(theta) * r - CARD_H / 2,
-              };
+              pos = { x: cx + Math.cos(theta) * r, y: cy + Math.sin(theta) * r };
+              centerAnchor = true;
             } else {
               const seedPos = layout[t.id];
               pos = seedPos || (() => {
@@ -1015,7 +981,7 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
                 filter: a < 0.3 ? "saturate(.4)" : a < 0.7 ? "saturate(.75)" : "none",
                 transition: "opacity .4s, filter .4s",
               }}>
-                <ThreadCluster thread={t} pos={pos}
+                <ThreadCluster thread={t} pos={pos} centerAnchor={centerAnchor}
                   onOpen={th => openThread(th.id)} />
               </div>
             );
