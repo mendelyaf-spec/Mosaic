@@ -371,6 +371,18 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
     };
   });
 
+  // Which reframing was "live" at the scrubber's moment? — the most recent
+  // mile-marker whose days-ago is >= headDays (i.e., already happened by then).
+  // Falls back to the oldest marker if the head sits before the thread began.
+  const activeMarkerAtHead = (() => {
+    const withDays = thread.mileMarkers.map(mm => ({ mm, days: ageToDays(mm.age) }));
+    const live = withDays.filter(x => x.days >= headDays);
+    return (live.length ? live[live.length - 1] : withDays[0]).mm;
+  })();
+  const activeQ = activeMarkerAtHead?.q || thread.q;
+  const activeAge = activeMarkerAtHead?.age || thread.last;
+  const isHeadAtNow = headDays <= 0;
+
   // Finds scatter on the OUTER ring, upper half (so they sit further from
   // the title than the markers but on roughly the same hemisphere).
   const finds = thread.fl.map((f, i) => {
@@ -1208,12 +1220,13 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
             <div style={{
               fontFamily: MT, fontSize: 10, letterSpacing: ".15em",
               textTransform: "uppercase", color: palette.accent, marginBottom: 8,
-            }}>{thread.domain} · {thread.age} old</div>
+            }}>{thread.domain} · {isHeadAtNow ? `${thread.age} old` : `framing from ${activeAge}`}</div>
             <div style={{
               fontFamily: ST, fontStyle: "italic", fontWeight: 300,
               fontSize: 26, lineHeight: 1.18, color: "#1A1714",
               textWrap: "balance",
-            }}>"{thread.q}"</div>
+              transition: "opacity .25s ease",
+            }}>"{activeQ}"</div>
             <div style={{
               marginTop: 14, display: "flex", justifyContent: "center", gap: 14,
               fontFamily: FT, fontSize: 11, color: "#5E5A55",
