@@ -533,6 +533,107 @@ const KINDRED_THREADS = [
       { type: "text",  cap: "Obsolete tools survive because they're carrying something the new tool dropped on the way.", d: "8wk" },
     ],
   },
+
+  // ── the small public courtyard ─────────────────────────────────
+  // A FOREIGN courtyard — Maya is NOT a member. Items from these
+  // threads expose the "ask to join the courtyard" action on the
+  // Promenade.
+  {
+    id: "k-theo-benches",
+    q: "Why do some benches invite strangers to sit together, and most don't?",
+    state: "active",
+    courtyardName: "the small public",
+    courtyardTopic: "objects that hold a street together",
+    owner: "Theo W.",
+    kindred: [
+      { who: "Jun H.",   since: "5 weeks",  q: "What is the smallest threshold that still marks an inside?" },
+      { who: "Noor A.",  since: "8 weeks",  q: "What does a shared kiln teach a street that a shared anything else doesn't?" },
+    ],
+    domain: "urban form",
+    dc: "amber",
+    age: "3 months",
+    last: "yesterday",
+    finds: 14,
+    notes: 5,
+    mileMarkers: [
+      { age: "3 months ago", q: "What makes a public bench actually public?" },
+      { age: "6 weeks ago",  q: "Why do some benches invite strangers to sit together, and most don't?" },
+    ],
+    fl: [
+      { t: "The Social Life of Small Urban Spaces", s: "William H. Whyte", d: "3mo", i: "📖" },
+      { t: "Bench census — Clerkenwell, week two", s: "field notes, 12 photos", d: "8wk", i: "📸" },
+      { t: "On the design of Danish public tables", s: "Mette Sørensen, interview", d: "5wk", i: "▶" },
+      { t: "Why London removed armrest-divided benches", s: "Guardian, longread", d: "3wk", i: "📰" },
+    ],
+    notesList: [
+      { type: "text",  cap: "The back-angle changes everything. Even a degree of recline says: stay.", d: "6wk" },
+      { type: "audio", cap: "Walking to Granary Square — what a working public bench actually sounds like", dur: "5:18", d: "4wk" },
+    ],
+  },
+  {
+    id: "k-jun-thresholds",
+    q: "What is the smallest threshold that still marks an inside?",
+    state: "active",
+    courtyardName: "the small public",
+    courtyardTopic: "objects that hold a street together",
+    owner: "Jun H.",
+    kindred: [
+      { who: "Theo W.",  since: "5 weeks",  q: "Why do some benches invite strangers to sit together?" },
+      { who: "Noor A.",  since: "6 weeks",  q: "What does a shared kiln teach a street?" },
+    ],
+    domain: "thresholds",
+    dc: "green",
+    age: "5 months",
+    last: "4 days ago",
+    finds: 16,
+    notes: 6,
+    mileMarkers: [
+      { age: "5 months ago", q: "Why do some doorways feel like rooms?" },
+      { age: "2 months ago", q: "What is the smallest threshold that still marks an inside?" },
+    ],
+    fl: [
+      { t: "Pattern 112 — Entrance Transition", s: "C. Alexander, A Pattern Language", d: "5mo", i: "📖" },
+      { t: "Seven doorways, drawn", s: "pencil studies", d: "10wk", i: "✎" },
+      { t: "On the threshold in Japanese houses", s: "Kengo Kuma, lecture", d: "6wk", i: "▶" },
+      { t: "The step that is not a step — Lisbon field notes", s: "personal log", d: "3wk", i: "✎" },
+    ],
+    notesList: [
+      { type: "image", cap: "A shop in Lisbon where the threshold was the smell of bread.", d: "8wk" },
+      { type: "text",  cap: "A threshold doesn't have to keep anyone out. It just has to be noticed on the way in.", d: "5wk" },
+    ],
+  },
+  {
+    id: "k-noor-kiln",
+    q: "What does a shared kiln teach a street that a shared anything else doesn't?",
+    state: "active",
+    courtyardName: "the small public",
+    courtyardTopic: "objects that hold a street together",
+    owner: "Noor A.",
+    kindred: [
+      { who: "Theo W.",  since: "8 weeks",  q: "Why do some benches invite strangers to sit together?" },
+      { who: "Jun H.",   since: "6 weeks",  q: "What is the smallest threshold that still marks an inside?" },
+    ],
+    domain: "craft",
+    dc: "amber",
+    age: "4 months",
+    last: "2 days ago",
+    finds: 12,
+    notes: 7,
+    mileMarkers: [
+      { age: "4 months ago", q: "Why do my neighbours organise around my firing schedule?" },
+      { age: "10 weeks ago", q: "What does a shared kiln teach a street that a shared anything else doesn't?" },
+    ],
+    fl: [
+      { t: "Bernard Leach's letters, 1954", s: "collected correspondence", d: "4mo", i: "📖" },
+      { t: "Kiln schedule, week 3 — photos", s: "schedule + 4 photos", d: "10wk", i: "📸" },
+      { t: "The afternoon at the Hackney kiln", s: "audio field note", d: "8wk", i: "🎙" },
+      { t: "Small public squares — Pattern 61", s: "C. Alexander, A Pattern Language", d: "5wk", i: "📖" },
+    ],
+    notesList: [
+      { type: "text",  cap: "Reframe: the kiln isn't the point. The waiting is.", d: "6wk" },
+      { type: "audio", cap: "Loading the kiln — explaining what I'm doing to a stranger who wandered in", dur: "3:41", d: "3wk" },
+    ],
+  },
 ];
 
 // PERSONAL THREADS — owners not yet inside a courtyard. Same shape as
