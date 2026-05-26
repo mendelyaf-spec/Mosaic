@@ -34,7 +34,7 @@ export default function MosaicApp() {
   if (room === 'pod')       return <PodRoom       navigate={navigate} />;
   if (room === 'pod-admin') return <PodAdminRoom  navigate={navigate} />;
   if (room === 'search')    return <SearchRoom    navigate={navigate} fromThreadId={params.from} deepenCard={params.deepen} settingsParam={params.settings} queryParam={params.q} />;
-  if (room === 'promenade') return <PromenadeRoom navigate={navigate} />;
+  if (room === 'promenade') return <PromenadeRoom navigate={navigate} cardId={params.card} />;
 
   return (
     <div style={{ padding: 40, fontFamily: 'DM Sans, sans-serif' }}>

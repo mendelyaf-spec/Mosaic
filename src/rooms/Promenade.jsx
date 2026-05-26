@@ -503,7 +503,7 @@ function ModeToggle({ mode, setMode }) {
 const CANVAS_W = 4000;
 const CANVAS_H = 2700;
 
-export function PromenadeRoom({ navigate }) {
+export function PromenadeRoom({ navigate, cardId }) {
   const allItems = useMemo(() => getPromenadeItems(), []);
   const { clusters, loose } = useMemo(() => buildClusters(allItems), [allItems]);
   const { positions, homes } = useMemo(
@@ -520,12 +520,25 @@ export function PromenadeRoom({ navigate }) {
   }, [allItems, clusters, loose]);
 
   const [mode, setMode] = useState('wander');
-  const [focusedIdx, setFocusedIdx] = useState(null);
   const [toast, setToast] = useState(null);
 
+  // The focused card is URL-driven: #room=promenade&card=<id>. The
+  // wander overlay shows when a cardId is present; focus mode defaults
+  // to the first item when no card is specified.
+  const focusedIdx = useMemo(() => {
+    if (!cardId) return null;
+    const idx = items.findIndex(it => it.id === cardId);
+    return idx === -1 ? null : idx;
+  }, [items, cardId]);
+
+  const openCard = (id) => navigate('promenade', { card: id });
+  const closeCard = () => navigate('promenade');
+
+  // Entering focus mode with no card in the URL → land on the first one.
   useEffect(() => {
-    if (mode === 'focus' && focusedIdx === null && items.length > 0) setFocusedIdx(0);
-    if (mode === 'wander') setFocusedIdx(null);
+    if (mode === 'focus' && !cardId && items.length > 0) {
+      openCard(items[0].id);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
@@ -577,7 +590,7 @@ export function PromenadeRoom({ navigate }) {
 
   const focusOverlay = focusedIdx !== null && mode === 'wander' && (
     <>
-      <div data-ui onClick={() => setFocusedIdx(null)} style={{
+      <div data-ui onClick={closeCard} style={{
         position: 'fixed', inset: 0, zIndex: 60,
         background: 'rgba(31,28,23,0.45)', backdropFilter: 'blur(2px)',
       }} />
@@ -589,10 +602,10 @@ export function PromenadeRoom({ navigate }) {
           item={items[focusedIdx]} ownCourtyards={ownCourtyards}
           onAction={onAction} navigate={navigate}
           position={focusedIdx + 1} total={items.length}
-          onPrev={focusedIdx > 0 ? () => setFocusedIdx(focusedIdx - 1) : null}
-          onNext={focusedIdx < items.length - 1 ? () => setFocusedIdx(focusedIdx + 1) : null}
+          onPrev={focusedIdx > 0 ? () => openCard(items[focusedIdx - 1].id) : null}
+          onNext={focusedIdx < items.length - 1 ? () => openCard(items[focusedIdx + 1].id) : null}
         />
-        <button data-ui onClick={() => setFocusedIdx(null)} style={{
+        <button data-ui onClick={closeCard} style={{
           position: 'fixed', top: 24, right: 24, zIndex: 62,
           background: P.paperCard, border: `1px solid ${P.paperEdge}`,
           fontFamily: MONO, fontSize: 10, letterSpacing: '.14em',
@@ -671,7 +684,7 @@ export function PromenadeRoom({ navigate }) {
                 return (
                   <WanderCard key={it.id} item={it} x={p.x} y={p.y} rot={p.rot}
                     detail={detail}
-                    onOpen={() => setFocusedIdx(i)} />
+                    onOpen={() => openCard(it.id)} />
                 );
               })}
             </>
@@ -698,8 +711,8 @@ export function PromenadeRoom({ navigate }) {
             item={it} ownCourtyards={ownCourtyards}
             onAction={onAction} navigate={navigate}
             position={focusedIdx + 1} total={items.length}
-            onPrev={focusedIdx > 0 ? () => setFocusedIdx(focusedIdx - 1) : null}
-            onNext={focusedIdx < items.length - 1 ? () => setFocusedIdx(focusedIdx + 1) : null}
+            onPrev={focusedIdx > 0 ? () => openCard(items[focusedIdx - 1].id) : null}
+            onNext={focusedIdx < items.length - 1 ? () => openCard(items[focusedIdx + 1].id) : null}
           />
         ) : (
           <div style={{ fontFamily: SERIF, fontStyle: 'italic',
