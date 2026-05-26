@@ -12,10 +12,10 @@ import {
   ZOOM_DEFAULT,
 } from '../shell/shell.jsx';
 import { WM } from '../data/wm-data.js';
-import { getAllThreads, getThreadById } from '../lib/threads.js';
+import { getAllThreads, getThreadById, deleteThread } from '../lib/threads.js';
 import { ThreadRoom } from './Thread.jsx';
 
-function ThreadCluster({ thread, pos, onOpen, centerAnchor = false }) {
+function ThreadCluster({ thread, pos, onOpen, onDelete, centerAnchor = false }) {
   const pal = WM.DOMAIN[thread.dc];
   const [hover, setHover] = useStateH(false);
   const [showReframes, setShowReframes] = useStateH(false);
@@ -137,6 +137,7 @@ function ThreadCluster({ thread, pos, onOpen, centerAnchor = false }) {
       )}
 
       <div style={{
+        position: "relative",
         background: pal.bg, borderRadius: 10,
         padding: "16px 20px",
         border: `1.5px solid ${pal.accent}28`,
@@ -145,6 +146,31 @@ function ThreadCluster({ thread, pos, onOpen, centerAnchor = false }) {
           : `0 2px 14px ${pal.accent}0c`,
         transition: "box-shadow .25s",
       }}>
+        {onDelete && (
+          <button
+            title="Delete this thread"
+            onMouseDown={swallow}
+            onMouseUp={(e) => {
+              swallow(e);
+              const q = (thread.q || '').trim();
+              const label = q.length > 60 ? q.slice(0, 60) + '…' : q;
+              if (window.confirm(`Delete this thread?\n\n“${label}”\n\nThis can't be undone.`)) {
+                onDelete(thread);
+              }
+            }}
+            style={{
+              position: "absolute", top: 8, right: 8,
+              width: 22, height: 22, borderRadius: "50%",
+              border: `1px solid ${pal.accent}33`,
+              background: hover ? "#FFFFFF" : "transparent",
+              color: hover ? pal.accent : "#B0ADA6",
+              fontSize: 12, lineHeight: 1, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              opacity: hover ? 1 : 0.0,
+              transition: "opacity .15s, color .15s, background .15s",
+              padding: 0,
+            }}>×</button>
+        )}
         <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
           <div style={{
             width: 8, height: 8, borderRadius: "50%", flexShrink: 0, marginTop: 6,
@@ -250,7 +276,9 @@ function ThreadExpansion({ thread, navigate, onClose }) {
 }
 
 function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStage, openerMode }) {
-  const threads = getAllThreads();
+  // version bumps on delete so getAllThreads() re-runs against fresh storage
+  const [version, setVersion] = useStateH(0);
+  const threads = React.useMemo(() => getAllThreads(), [version]);
   const [zoom, setZoom] = useStateH(ZOOM_DEFAULT);
   const [viewPeriod, setViewPeriod] = useStateH("all");
   const [viewMode, setViewMode] = useStateH("spatial"); // "spatial" | "timeline"
@@ -264,6 +292,12 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
   const expandedThread = expandedThreadId
     ? (getThreadById(expandedThreadId) || threads.find(t => t.id === expandedThreadId) || null)
     : null;
+
+  const handleDelete = (thread) => {
+    if (expandedThreadId === thread.id) setExpandedThreadId(null);
+    deleteThread(thread.id);
+    setVersion(v => v + 1);
+  };
 
   // Per-thread activity weight per period — 1 = bright, 0 = dim out.
   // Hand-tuned from each thread's `last` timestamp + mile-marker dates.
@@ -982,7 +1016,8 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
                 transition: "opacity .4s, filter .4s",
               }}>
                 <ThreadCluster thread={t} pos={pos} centerAnchor={centerAnchor}
-                  onOpen={th => openThread(th.id)} />
+                  onOpen={th => openThread(th.id)}
+                  onDelete={handleDelete} />
               </div>
             );
           })}

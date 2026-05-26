@@ -10,9 +10,41 @@ import { readStored, writeStored } from './storage.js';
 import { WM } from '../data/wm-data.js';
 
 const THREADS_KEY = 'mosaic.threads';
+const HIDDEN_KEY  = 'mosaic.hiddenThreads';
 
 export function loadUserThreads() {
   return readStored(THREADS_KEY, []);
+}
+
+function loadHiddenIds() {
+  return new Set(readStored(HIDDEN_KEY, []));
+}
+
+// Remove a thread from Home. User-created threads (saved DOS sessions,
+// spawned threads, or seed threads that have user copies overriding
+// them) are dropped from storage entirely. Seeded Maya threads can't be
+// removed from source, so we persist a hidden-ids set instead; the
+// reader functions filter against it.
+export function deleteThread(id) {
+  if (!id) return false;
+  const user = loadUserThreads();
+  if (user.some(t => t.id === id)) {
+    writeStored(THREADS_KEY, user.filter(t => t.id !== id));
+  }
+  if (WM.THREADS.some(t => t.id === id)) {
+    const hidden = readStored(HIDDEN_KEY, []);
+    if (!hidden.includes(id)) writeStored(HIDDEN_KEY, [...hidden, id]);
+  }
+  return true;
+}
+
+// Bring a previously-hidden seeded thread back. Has no effect on
+// user-created threads (those are gone for good once deleteThread runs).
+export function restoreThread(id) {
+  const hidden = readStored(HIDDEN_KEY, []);
+  if (!hidden.includes(id)) return false;
+  writeStored(HIDDEN_KEY, hidden.filter(h => h !== id));
+  return true;
 }
 
 export function saveThread(thread) {
@@ -26,10 +58,12 @@ export function saveThread(thread) {
 
 export function getAllThreads() {
   // User threads override seeded threads of the same id (so an appended-to
-  // seed thread shows its updated copy, not a duplicate).
-  const user = loadUserThreads();
+  // seed thread shows its updated copy, not a duplicate). Hidden ids
+  // (deleted seeded threads) are filtered out at both layers.
+  const hidden = loadHiddenIds();
+  const user = loadUserThreads().filter(t => !hidden.has(t.id));
   const userIds = new Set(user.map(t => t.id));
-  const seed = WM.THREADS.filter(t => !userIds.has(t.id));
+  const seed = WM.THREADS.filter(t => !userIds.has(t.id) && !hidden.has(t.id));
   return [...user, ...seed];
 }
 
