@@ -111,8 +111,69 @@ function buildMask(imageData, threshold) {
   return mask;
 }
 
-// Connected-component labelling (4-connected). Returns labels array
-// and a size-per-label map. Background pixels get label 0.
+// Morphological dilate — every off-pixel that has any on-neighbour
+// (8-conn) flips on. Iterating thickens the subject region.
+function dilate(src, W, H, iterations = 1) {
+  let cur = src;
+  for (let it = 0; it < iterations; it++) {
+    const next = new Uint8Array(cur.length);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        if (cur[i]) { next[i] = 1; continue; }
+        let on = 0;
+        for (let dy = -1; dy <= 1 && !on; dy++) {
+          for (let dx = -1; dx <= 1 && !on; dx++) {
+            const nx = x + dx, ny = y + dy;
+            if (nx >= 0 && ny >= 0 && nx < W && ny < H && cur[ny * W + nx]) on = 1;
+          }
+        }
+        next[i] = on;
+      }
+    }
+    cur = next;
+  }
+  return cur;
+}
+
+// Morphological erode — every on-pixel that has any off-neighbour
+// (8-conn) flips off. Iterating thins the subject region.
+function erode(src, W, H, iterations = 1) {
+  let cur = src;
+  for (let it = 0; it < iterations; it++) {
+    const next = new Uint8Array(cur.length);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        if (!cur[i]) continue;
+        let allOn = 1;
+        outer:
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= W || ny >= H) { allOn = 0; break outer; }
+            if (!cur[ny * W + nx]) { allOn = 0; break outer; }
+          }
+        }
+        next[i] = allOn;
+      }
+    }
+    cur = next;
+  }
+  return cur;
+}
+
+// Morphological closing — dilate then erode. Fills small holes in
+// the subject and bridges narrow gaps between fragments. This is the
+// key step that prevents leaf-vein textures or noise from shattering
+// the subject into many tiny components.
+function closeMask(mask, W, H, iterations = 2) {
+  return erode(dilate(mask, W, H, iterations), W, H, iterations);
+}
+
+// Connected-component labelling (8-connected, so diagonal contacts
+// keep neighbouring pixels in the same component). Returns labels
+// array and a size-per-label map. Background pixels get label 0.
 function labelComponents(mask, W, H) {
   const labels = new Int32Array(W * H);
   const sizes = [0];
@@ -129,7 +190,10 @@ function labelComponents(mask, W, H) {
           const j = stack.pop();
           sizes[next]++;
           const jx = j % W, jy = (j / W) | 0;
-          const neigh = [[jx+1,jy],[jx-1,jy],[jx,jy+1],[jx,jy-1]];
+          const neigh = [
+            [jx+1,jy],[jx-1,jy],[jx,jy+1],[jx,jy-1],
+            [jx+1,jy+1],[jx+1,jy-1],[jx-1,jy+1],[jx-1,jy-1],
+          ];
           for (const [nx, ny] of neigh) {
             if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
             const ni = ny * W + nx;
@@ -314,15 +378,28 @@ export async function extractShape(dataUrl, { threshold = 90, epsilon = 1.5 } = 
   const { canvas, ctx } = drawToCanvas(img, PROC);
   const imageData = ctx.getImageData(0, 0, PROC, PROC);
   const rawMask = buildMask(imageData, threshold);
-  const subjectPixels = rawMask.reduce((n, v) => n + v, 0);
-  const coverage = subjectPixels / rawMask.length;
+  // Morphological closing — bridges narrow gaps and fills small bg
+  // holes inside the subject (the leaf-vein case). Two iterations are
+  // enough for most photo noise; more would over-smooth the silhouette.
+  const closedMask = closeMask(rawMask, PROC, PROC, 2);
+  const subjectPixels = closedMask.reduce((n, v) => n + v, 0);
+  const coverage = subjectPixels / closedMask.length;
   // Diagnostic mask preview always available so the modal can show
   // the user what was detected when no contour is produced.
-  const maskPreview = renderMaskPreview(rawMask, PROC, PROC);
-  let mask = labelComponents(new Uint8Array(rawMask), PROC, PROC);
-  const contour = traceContour(mask, PROC, PROC);
+  const maskPreview = renderMaskPreview(closedMask, PROC, PROC);
+  // labelComponents mutates the mask in place keeping only the biggest
+  // 8-connected component, and reports its pixel count via the returned
+  // mask sum.
+  const labelled = labelComponents(new Uint8Array(closedMask), PROC, PROC);
+  const biggestPixels = labelled.reduce((n, v) => n + v, 0);
+  const fragmented = subjectPixels > 200 && biggestPixels < subjectPixels * 0.35;
+  const contour = traceContour(labelled, PROC, PROC);
   if (contour.length < 8) {
-    return { path: '', points: [], preview: '', empty: true, coverage, maskPreview };
+    return {
+      path: '', points: [], preview: '',
+      empty: true, coverage, maskPreview, fragmented,
+      biggestRatio: subjectPixels ? biggestPixels / subjectPixels : 0,
+    };
   }
   const simplified = simplifyDP(contour, epsilon);
   const normalized = normalize(simplified, PROC, PROC);
@@ -333,5 +410,7 @@ export async function extractShape(dataUrl, { threshold = 90, epsilon = 1.5 } = 
     pointCount: normalized.length,
     coverage,
     maskPreview,
+    fragmented,
+    biggestRatio: subjectPixels ? biggestPixels / subjectPixels : 0,
   };
 }

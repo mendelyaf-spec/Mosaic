@@ -1275,7 +1275,9 @@ export function ShapeExtractor({ open, palette, onClose, onSaved }) {
                     ? 'almost everything counts as subject — try lowering the threshold'
                     : extracted.coverage < 0.02
                     ? 'almost nothing counts as subject — try raising the threshold'
-                    : 'detected blob too small — adjust the threshold to find your subject'}</div>
+                    : extracted.fragmented
+                    ? `subject is fragmenting (biggest blob is ${Math.round((extracted.biggestRatio || 0) * 100)}% of detected pixels) — try lowering the threshold so pieces merge`
+                    : 'no clean blob found — nudge the threshold either direction'}</div>
                 </>
               ) : imageData ? (
                 <span style={{ fontFamily: MT, fontSize: 9, color: '#9A968F' }}>warming up…</span>
