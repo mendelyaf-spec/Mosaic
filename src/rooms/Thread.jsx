@@ -1018,7 +1018,16 @@ function ShapeLibrary({ palette, disabled, current, onPick }) {
 // Items render at a uniform tile width with the same SVG thumbnails the
 // Promenade uses. Newest first; hover reveals title + meta; click opens
 // the same activeCard overlay the spatial and timeline views use.
-const GRID_TILE_W = 280;
+// are.na constants. Numbers picked to match the linked channel:
+//   - 20px side margin from the screen edge
+//   - 20px gap between tiles (both axes)
+//   - 232px column width, tiles uniform per row via auto-fill
+//   - 1px solid #d4d4d4 border, no shadow, no hover lift
+const ARENA_PAD = 20;
+const ARENA_GAP = 20;
+const ARENA_COL = 232;
+const ARENA_BORDER = '#d4d4d4';
+
 function GridView({ thread, palette, chrome, onOpenFind, onOpenNote }) {
   const items = [
     ...thread.fl.map(f => ({ kind: 'find', data: f, days: ageToDays(f.d), age: f.d })),
@@ -1038,16 +1047,18 @@ function GridView({ thread, palette, chrome, onOpenFind, onOpenNote }) {
       {chrome.apertures.map((a, i) => <ApT key={i} {...a} />)}
       {chrome.cardOverlay}
       <div style={{
-        paddingTop: 170, paddingLeft: 40, paddingRight: 40, paddingBottom: 80,
+        paddingTop: 170,
+        paddingLeft: ARENA_PAD, paddingRight: ARENA_PAD,
+        paddingBottom: ARENA_PAD,
       }}>
         <div style={{
           fontFamily: FT, fontSize: 11, letterSpacing: '.16em',
-          textTransform: 'uppercase', color: '#9A968F', marginBottom: 18,
+          textTransform: 'uppercase', color: '#9A968F', marginBottom: ARENA_PAD,
         }}>{items.length} items · chronological · newest first</div>
         <div style={{
           display: "grid",
-          gridTemplateColumns: `repeat(auto-fill, minmax(${GRID_TILE_W}px, 1fr))`,
-          gap: 16,
+          gridTemplateColumns: `repeat(auto-fill, minmax(${ARENA_COL}px, 1fr))`,
+          gap: ARENA_GAP,
         }}>
           {items.map((it, idx) => (
             <GridTile key={idx} item={it} palette={palette}
@@ -1060,7 +1071,6 @@ function GridView({ thread, palette, chrome, onOpenFind, onOpenNote }) {
 }
 
 function GridTile({ item, palette, onOpen }) {
-  const [hover, setHover] = useStateT(false);
   const isFind = item.kind === 'find';
   const titleText = isFind ? item.data.t : item.data.cap;
   const sourceText = isFind
@@ -1077,24 +1087,20 @@ function GridTile({ item, palette, onOpen }) {
       });
   return (
     <div onClick={onOpen}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
       style={{
         position: 'relative', cursor: 'pointer',
         background: '#FFFFFF',
-        border: '1px solid rgba(26,23,20,.08)',
+        border: `1px solid ${ARENA_BORDER}`,
         overflow: 'hidden',
-        transition: 'box-shadow .15s, transform .15s',
-        boxShadow: hover ? '0 8px 22px rgba(40,30,15,.10)' : '0 1px 2px rgba(40,30,15,.04)',
       }}>
       {media
-        ? <Thumbnail media={media} kind={item.kind} width={GRID_TILE_W} />
+        ? <Thumbnail media={media} kind={item.kind} width={ARENA_COL} />
         : <GridQuoteBand text={titleText} />}
       {/* Bottom strip — always visible, restrained */}
       <div style={{
         padding: '10px 12px',
         fontFamily: FT, fontSize: 11.5, lineHeight: 1.35, color: '#3A3530',
-        borderTop: '1px solid rgba(26,23,20,.05)',
+        borderTop: `1px solid ${ARENA_BORDER}`,
         display: 'flex', flexDirection: 'column', gap: 3,
       }}>
         <div style={{
