@@ -21,6 +21,7 @@ import {
 } from '../lib/threads.js';
 import {
   DesignPanel, EtherLayer, SHAPE_DEFS,
+  GridStyleTag, TextTileBody, PinGlyph,
 } from './Thread.jsx';
 
 function ThreadCluster({
@@ -329,6 +330,118 @@ function ThreadCluster({
 // page at #room=thread&id=<id>, so the constellation never sits faintly
 // behind a focused thread.)
 
+
+// Home grid view — same chrome and tile language as the Thread grid,
+// but each tile is a THREAD (not a card on a thread). Click a tile to
+// open that thread.
+function HomeGridView({ threads, viewMode, setViewMode, onOpenThread }) {
+  const totalCards = threads.reduce((n, t) => n + (t.fl?.length || 0) + (t.notesList?.length || 0), 0);
+  return (
+    <div className="tg-root">
+      <GridStyleTag />
+      <div className="tg-chrome">
+        <div className="left">
+          <span style={{
+            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase',
+            color: '#8a8a8a',
+          }}>Mosaic</span>
+          <span style={{
+            fontFamily: "'Fraunces', Georgia, serif", fontStyle: 'italic',
+            fontSize: 16, color: '#111', marginLeft: 10,
+          }}>the grid</span>
+        </div>
+        <div className="center">
+          <span className="tg-center-label">{threads.length} threads · {totalCards} cards</span>
+        </div>
+        <div className="right">
+          <HomeGridToggle current={viewMode} onSwitch={setViewMode} />
+        </div>
+      </div>
+      <div className="tg-pad">
+        <div className="tg-thead">
+          <div className="meta">
+            <span>Maya R.</span>
+            <span className="sep">·</span>
+            <span>{threads.length} threads in motion</span>
+          </div>
+          <h1 className="q">What are you holding right now?</h1>
+        </div>
+        <div className="tg-grid">
+          {threads.map(t => (
+            <HomeGridTile key={t.id} thread={t} onOpen={() => onOpenThread(t.id)} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HomeGridTile({ thread, onOpen }) {
+  // Body = the previous reframe's question (so the tile shows the
+  // shape of the inquiry's movement, not the current question twice).
+  // Falls back to the first find's title if there's only one marker.
+  const markers = thread.mileMarkers || [];
+  const body = markers.length > 1
+    ? markers[markers.length - 2].q
+    : (thread.fl?.[0]?.t || '');
+  const captionText = thread.domain || thread.q;
+  return (
+    <div className="tg-cell" onClick={onOpen}>
+      <div className="tg-tile">
+        <TextTileBody title={thread.q} body={body} />
+      </div>
+      <div className="tg-cap">
+        <PinGlyph />
+        <span className="t">{captionText}</span>
+      </div>
+    </div>
+  );
+}
+
+function HomeGridToggle({ current, onSwitch }) {
+  const opts = [
+    { id: 'spatial',  l: 'spatial' },
+    { id: 'timeline', l: 'timeline' },
+    { id: 'grid',     l: 'grid' },
+  ];
+  const glyph = (id) => {
+    const active = current === id;
+    const c = active ? '#fff' : '#555';
+    if (id === 'spatial') return (
+      <svg width="10" height="10" viewBox="0 0 10 10">
+        <circle cx="5" cy="5" r="3.5" fill="none" stroke={c} strokeWidth="1"/>
+        <circle cx="5" cy="5" r="1.2" fill={c}/>
+      </svg>
+    );
+    if (id === 'timeline') return (
+      <svg width="10" height="10" viewBox="0 0 10 10">
+        <line x1="0" y1="5" x2="10" y2="5" stroke={c} strokeWidth="1"/>
+        <circle cx="2" cy="5" r="1" fill={c}/>
+        <circle cx="5" cy="5" r="1" fill={c}/>
+        <circle cx="8" cy="5" r="1" fill={c}/>
+      </svg>
+    );
+    return (
+      <svg width="10" height="10" viewBox="0 0 10 10">
+        <rect x="0.5" y="0.5" width="3.5" height="3.5" fill="none" stroke={c} strokeWidth="1"/>
+        <rect x="6"   y="0.5" width="3.5" height="3.5" fill="none" stroke={c} strokeWidth="1"/>
+        <rect x="0.5" y="6"   width="3.5" height="3.5" fill="none" stroke={c} strokeWidth="1"/>
+        <rect x="6"   y="6"   width="3.5" height="3.5" fill="none" stroke={c} strokeWidth="1"/>
+      </svg>
+    );
+  };
+  return (
+    <div className="tg-vt">
+      {opts.map(o => (
+        <button key={o.id} className={current === o.id ? 'on' : ''}
+          onClick={() => onSwitch(o.id)}>
+          {glyph(o.id)} {o.l}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStage, openerMode }) {
   // version bumps on delete so getAllThreads() re-runs against fresh storage
@@ -679,6 +792,7 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
         {[
           { id: "spatial",  l: "Spatial" },
           { id: "timeline", l: "Timeline" },
+          { id: "grid",     l: "Grid" },
         ].map(m => (
           <button key={m.id} onClick={() => setViewMode(m.id)} style={{
             fontSize: 10, fontWeight: 500, padding: "3px 9px", borderRadius: 9,
@@ -800,6 +914,20 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
       </div>
     </div>
   );
+
+  // ============ GRID VIEW ============
+  // Uniform thread tiles using the same design language as the Thread
+  // grid (white, sharp borders, muted teal pin captions).
+  if (viewMode === "grid") {
+    return (
+      <HomeGridView
+        threads={threads}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        onOpenThread={openThread}
+      />
+    );
+  }
 
   // ============ TIMELINE VIEW ============
   // Horizontal time axis. Three thread lanes stacked vertically. Recent right, older left.

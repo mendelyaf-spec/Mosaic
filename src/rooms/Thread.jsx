@@ -1121,7 +1121,7 @@ const GRID_FONT_SANS = "'Inter', system-ui, sans-serif";
 const GRID_FONT_SERIF = "'Fraunces', Georgia, serif";
 const GRID_FONT_MONO = "'JetBrains Mono', ui-monospace, monospace";
 
-function GridStyleTag() {
+export function GridStyleTag() {
   return (
     <style>{`
       .tg-root { position: fixed; inset: 0; background: #fff; overflow: auto;
@@ -1245,7 +1245,7 @@ function GridGlyph({ active }) {
   );
 }
 
-function PinGlyph() {
+export function PinGlyph() {
   return (
     <svg className="pin" width="9" height="11" viewBox="0 0 9 11">
       <circle cx="4.5" cy="3.5" r="2.7" fill="none" stroke="currentColor" strokeWidth="1"/>
@@ -1337,7 +1337,7 @@ function GridTile({ item, onOpen }) {
   );
 }
 
-function TextTileBody({ title, body }) {
+export function TextTileBody({ title, body }) {
   return (
     <div className="tg-text">
       <div className="t">{title}</div>
