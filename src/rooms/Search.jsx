@@ -860,7 +860,7 @@ export function SearchRoom({ navigate, fromThreadId, deepenCard, settingsParam, 
               background: '#1A5C46', color: '#F6F3EC', border: 'none',
               opacity: (phase === 'characterizing' || phase === 'filling' || !input.trim() || selectedMoves.length === 0) ? 0.4 : 1,
             }}>
-            {phase === 'characterizing' ? 'Reading…' : phase === 'filling' ? 'Filling slots…' : 'Take it down'}
+            {phase === 'characterizing' ? 'Reading…' : phase === 'filling' ? 'Filling slots…' : 'Search'}
           </button>
           <span style={{ fontFamily: FONT_SANS, fontSize: 12, color: '#7A756F' }}>
             {selectedMoves.length} move{selectedMoves.length === 1 ? '' : 's'} ·
