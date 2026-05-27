@@ -1254,32 +1254,23 @@ export function PinGlyph() {
   );
 }
 
-function GridView({ thread, threadView, setThreadView, onBack, onOpenFind, onOpenNote, cardOverlay }) {
-  const owner = thread.owner || 'Maya R.';
+function GridView({ thread, onOpenFind, onOpenNote }) {
   const items = [
     ...thread.fl.map(f => ({ kind: 'find', data: f, days: ageToDays(f.d), age: f.d })),
     ...(thread.notesList || []).map(n => ({ kind: 'note', data: n, days: ageToDays(n.d), age: n.d })),
   ];
   // Newest first — smaller days-ago = more recent.
   items.sort((a, b) => a.days - b.days);
+  // Padding-top clears the existing Thread chrome (scrubber at top:8,
+  // header at top:22 max ~80px tall, view toggle / identity card at
+  // top:24). 130px is the right number to start clean.
   return (
     <div className="tg-root">
       <GridStyleTag />
-      <div className="tg-chrome">
-        <div className="left">
-          <button className="tg-back" onClick={onBack}>← back to the promenade</button>
-        </div>
-        <div className="center">
-          <span className="tg-center-label">on {owner}&rsquo;s thread</span>
-        </div>
-        <div className="right">
-          <GridViewToggle current={threadView} onSwitch={setThreadView} />
-        </div>
-      </div>
-      <div className="tg-pad">
+      <div className="tg-pad" style={{ paddingTop: 130 }}>
         <div className="tg-thead">
           <div className="meta">
-            <span>{owner}&rsquo;s thread</span>
+            <span>{thread.owner || 'Maya R.'}&rsquo;s thread</span>
             <span className="sep">·</span>
             <span>pursuing for {thread.age || '—'}</span>
             <span className="sep">·</span>
@@ -1294,7 +1285,6 @@ function GridView({ thread, threadView, setThreadView, onBack, onOpenFind, onOpe
           ))}
         </div>
       </div>
-      {cardOverlay}
     </div>
   );
 }
@@ -2208,16 +2198,29 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
   // duotone photos — so the grid reads as media-rich without any raster
   // assets. Click a tile to open it (same overlay as the other views).
   if (threadView === "grid") {
-    return (
-      <GridView
-        thread={thread}
-        threadView={threadView}
-        setThreadView={setThreadView}
-        onBack={() => navigate('home')}
-        cardOverlay={cardOverlay}
-        onOpenFind={(find) => { setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "find", data: find }); }}
-        onOpenNote={(note) => { setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "note", data: note }); }}
+    const scrubber = (
+      <TimelineScrubber
+        markers={thread.mileMarkers.map((m, i, a) => ({ ...m, isCurrent: i === a.length - 1 }))}
+        oldestDays={ageToDays(thread.age)}
+        label={`thread time · ${thread.age} old`}
+        onScrub={setHeadDays}
       />
+    );
+    return (
+      <>
+        <GridView
+          thread={thread}
+          onOpenFind={(find) => { setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "find", data: find }); }}
+          onOpenNote={(note) => { setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "note", data: note }); }}
+        />
+        {header}
+        {scrubber}
+        {breadcrumb}
+        {identityCard}
+        {viewToggle}
+        {apertures.map((a, i) => <ApT key={i} {...a} />)}
+        {cardOverlay}
+      </>
     );
   }
 
