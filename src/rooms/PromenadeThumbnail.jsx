@@ -31,14 +31,14 @@ export function Thumbnail({ media, kind, width = 268, height = null, fill = fals
       <svg viewBox={`0 0 ${refW} ${refH}`} width="100%" height="100%"
         preserveAspectRatio={fill ? 'xMidYMid slice' : 'none'}
         style={{ display:'block' }}>
-        {media.kind === 'photo'      && <PhotoScene w={width} h={h} hue={media.hue} scene={media.scene} />}
-        {media.kind === 'drawing'    && <DrawingScene w={width} h={h} hue={media.hue} />}
-        {media.kind === 'book'       && <BookCover w={width} h={h} hue={media.hue} title={media.title} author={media.author} spine={media.spine} />}
-        {media.kind === 'article'    && <ArticleHero w={width} h={h} hue={media.hue} source={media.source} />}
-        {media.kind === 'shelf-cover'&& <ShelfCover w={width} h={h} hue={media.hue} title={media.title} author={media.author} />}
-        {media.kind === 'event-live' && <EventLive w={width} h={h} hue={media.hue} participants={media.participants} />}
-        {media.kind === 'event-async'&& <EventAsync w={width} h={h} hue={media.hue} participants={media.participants} rounds={media.rounds} />}
-        {media.kind === 'audio'      && <AudioWave w={width} h={h} hue={media.hue} peaks={media.peaks} />}
+        {media.kind === 'photo'      && <PhotoScene w={refW} h={refH} hue={media.hue} scene={media.scene} />}
+        {media.kind === 'drawing'    && <DrawingScene w={refW} h={refH} hue={media.hue} />}
+        {media.kind === 'book'       && <BookCover w={refW} h={refH} hue={media.hue} title={media.title} author={media.author} spine={media.spine} />}
+        {media.kind === 'article'    && <ArticleHero w={refW} h={refH} hue={media.hue} source={media.source} />}
+        {media.kind === 'shelf-cover'&& <ShelfCover w={refW} h={refH} hue={media.hue} title={media.title} author={media.author} />}
+        {media.kind === 'event-live' && <EventLive w={refW} h={refH} hue={media.hue} participants={media.participants} />}
+        {media.kind === 'event-async'&& <EventAsync w={refW} h={refH} hue={media.hue} participants={media.participants} rounds={media.rounds} />}
+        {media.kind === 'audio'      && <AudioWave w={refW} h={refH} hue={media.hue} peaks={media.peaks} />}
       </svg>
 
       {media.kind === 'audio'      && <Chip>{media.duration}</Chip>}
