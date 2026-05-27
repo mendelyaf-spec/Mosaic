@@ -22,7 +22,9 @@ import {
   loadThreadEther, saveThreadEther,
   loadThreadBorders, saveThreadBorders,
   placeQueuedFind, dismissQueuedFind,
+  loadUserShapes, saveUserShape, deleteUserShape,
 } from '../lib/threads.js';
+import { extractShape } from '../lib/shapeExtract.js';
 import { deriveFindMedia, deriveNoteMedia } from '../lib/promenade.js';
 import { Thumbnail } from './PromenadeThumbnail.jsx';
 
@@ -379,9 +381,23 @@ function MileMarker({ mm, x, y, isCurrent, palette, onOpen }) {
   );
 }
 
-function FindCard({ find, x, y, palette, onOpen, onShared, shapeId = 'rect', selected = false, borderOverride = null }) {
+// Resolve a shape id to a definition, looking up built-in SHAPE_DEFS
+// first and then this user's extracted shapes from userShapes. Returns
+// { path } or null.
+function resolveShapeDef(shapeId, userShapes) {
+  if (!shapeId || shapeId === 'rect') return null;
+  if (SHAPE_DEFS[shapeId]) return SHAPE_DEFS[shapeId];
+  if (Array.isArray(userShapes)) {
+    const u = userShapes.find(s => s.id === shapeId);
+    if (u) return { path: u.path, label: u.label };
+  }
+  return null;
+}
+
+function FindCard({ find, x, y, palette, onOpen, onShared, shapeId = 'rect', userShapes = [], selected = false, borderOverride = null }) {
   const shared = !!find.sharedWith;
-  const shaped = shapeId && shapeId !== 'rect';
+  const shapeDef = resolveShapeDef(shapeId, userShapes);
+  const shaped = !!shapeDef;
   const borderColor = borderOverride?.color;
   const borderPx    = borderOverride?.thickness;
   const customBorder = !!(borderColor || borderPx);
@@ -412,7 +428,7 @@ function FindCard({ find, x, y, palette, onOpen, onShared, shapeId = 'rect', sel
             width: '100%', height: '100%',
             pointerEvents: 'none', overflow: 'visible',
           }}>
-          <path d={SHAPE_DEFS[shapeId].path} fill="none"
+          <path d={shapeDef.path} fill="none"
             stroke={customBorder ? (borderColor || palette.accent) : (palette.accent + 'CC')}
             strokeWidth={customBorder ? (borderPx || 1.6) : 1.6}
             vectorEffect="non-scaling-stroke" />
@@ -458,10 +474,11 @@ function FindCard({ find, x, y, palette, onOpen, onShared, shapeId = 'rect', sel
   );
 }
 
-function NoteCard({ note, x, y, palette, onOpen, onShared, shapeId = 'rect', selected = false, borderOverride = null }) {
+function NoteCard({ note, x, y, palette, onOpen, onShared, shapeId = 'rect', userShapes = [], selected = false, borderOverride = null }) {
   const icon = note.type === "audio" ? "\ud83c\udf99" : note.type === "image" ? "\ud83d\udcf8" : "\u270e";
   const shared = !!note.sharedWith;
-  const shaped = shapeId && shapeId !== 'rect';
+  const shapeDef = resolveShapeDef(shapeId, userShapes);
+  const shaped = !!shapeDef;
   const borderColor = borderOverride?.color;
   const borderPx    = borderOverride?.thickness;
   const customBorder = !!(borderColor || borderPx);
@@ -489,7 +506,7 @@ function NoteCard({ note, x, y, palette, onOpen, onShared, shapeId = 'rect', sel
             width: '100%', height: '100%',
             pointerEvents: 'none', overflow: 'visible',
           }}>
-          <path d={SHAPE_DEFS[shapeId].path} fill="none"
+          <path d={shapeDef.path} fill="none"
             stroke={customBorder ? (borderColor || palette.accent) : (palette.accent + 'CC')}
             strokeWidth={customBorder ? (borderPx || 1.6) : 1.6}
             vectorEffect="non-scaling-stroke" />
@@ -723,6 +740,7 @@ export function DesignPanel({
   selectedCardKey, currentShapeForSelected,
   currentBorderForSelected,
   onPickShape, onPickBorderColor, onPickBorderThickness,
+  userShapes, onOpenShapeExtractor, onDeleteUserShape,
   currentEther, onPickEther, onUploadEther,
 }) {
   const tabBtn = (id, label) => {
@@ -810,7 +828,10 @@ export function DesignPanel({
             palette={palette}
             disabled={!selectedCardKey}
             current={currentShapeForSelected}
-            onPick={onPickShape} />
+            onPick={onPickShape}
+            userShapes={userShapes}
+            onOpenExtractor={onOpenShapeExtractor}
+            onDeleteUserShape={onDeleteUserShape} />
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 10 }}>
             <button onClick={onLockShapes} disabled={!shapesDirty} style={{
               fontSize: 10, fontWeight: 600, padding: "5px 11px", borderRadius: 6,
@@ -1062,73 +1083,355 @@ function EtherTilePreview({ id, accent }) {
   );
 }
 
+// ShapeExtractor — modal for turning an uploaded image into a card
+// shape. Pipeline lives in lib/shapeExtract.js (corner-sample bg +
+// flood-fill + connected-component + Moore-neighbour contour +
+// Douglas-Peucker). The slider tunes the bg-removal aggressiveness,
+// live-previews the extracted silhouette, and writes a new entry into
+// mosaic.userShapes.v1 on save.
+function ShapeExtractor({ open, palette, onClose, onSaved }) {
+  const [imageData, setImageData] = useStateT(null);
+  const [threshold, setThreshold] = useStateT(60);
+  const [epsilon, setEpsilon] = useStateT(1.5);
+  const [name, setName] = useStateT('');
+  const [extracted, setExtracted] = useStateT(null);
+  const [working, setWorking] = useStateT(false);
+  const fileRef = useRef(null);
+  const reqRef = useRef(0);
+
+  useEffect(() => {
+    if (!open) {
+      setImageData(null); setThreshold(60); setEpsilon(1.5);
+      setName(''); setExtracted(null); setWorking(false);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!imageData) { setExtracted(null); return; }
+    const seq = ++reqRef.current;
+    setWorking(true);
+    extractShape(imageData, { threshold, epsilon }).then(res => {
+      // ignore stale runs if the user has moved the slider since.
+      if (seq !== reqRef.current) return;
+      setExtracted(res);
+      setWorking(false);
+    }).catch(err => {
+      if (seq !== reqRef.current) return;
+      console.warn('extractShape failed', err);
+      setExtracted(null); setWorking(false);
+    });
+  }, [imageData, threshold, epsilon]);
+
+  if (!open) return null;
+  const accent = palette?.accent || '#1A5C46';
+
+  const onFile = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (file.size > 6_000_000) {
+      alert('That image is bigger than ~6MB. Try a smaller file.');
+      e.target.value = ''; return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setImageData(reader.result);
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+  const trySave = () => {
+    if (!extracted || extracted.empty || !extracted.path) {
+      alert('Nothing extracted yet — pick an image and adjust the slider until the silhouette looks right.');
+      return;
+    }
+    const shape = {
+      label: (name || 'My shape').trim().slice(0, 40),
+      path: extracted.path,
+      preview: extracted.preview || '',
+    };
+    onSaved && onSaved(shape);
+    onClose && onClose();
+  };
+
+  return (
+    <>
+      <div data-ui onClick={onClose} style={{
+        position: 'fixed', inset: 0, zIndex: 80,
+        background: 'rgba(31,28,23,0.55)', backdropFilter: 'blur(2px)',
+      }} />
+      <div data-ui style={{
+        position: 'fixed', top: '50%', left: '50%',
+        transform: 'translate(-50%,-50%)', zIndex: 81,
+        width: 'min(640px, 92vw)', background: '#FAF5E9',
+        border: `1px solid ${accent}55`, borderRadius: 6,
+        boxShadow: '0 30px 80px -20px rgba(40,30,15,.45)',
+        padding: '22px 24px 24px', fontFamily: FT,
+      }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          marginBottom: 14,
+        }}>
+          <span style={{
+            fontFamily: MT, fontSize: 9.5, letterSpacing: '.18em',
+            textTransform: 'uppercase', color: accent, fontWeight: 700,
+          }}>✦ extract a shape</span>
+          <button onClick={onClose} title="Close" style={{
+            background: 'transparent', border: 'none', color: '#9A968F',
+            cursor: 'pointer', padding: 2, fontFamily: MT, fontSize: 11,
+          }}>✕</button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div>
+            <div style={{
+              fontSize: 8.5, letterSpacing: '.1em', textTransform: 'uppercase',
+              color: '#9A968F', marginBottom: 4,
+            }}>image</div>
+            <div style={{
+              aspectRatio: '1 / 1', background: '#FFFFFF',
+              border: '1px solid rgba(26,23,20,.10)', borderRadius: 4,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              overflow: 'hidden', position: 'relative', marginBottom: 8,
+            }}>
+              {imageData ? (
+                <img src={imageData} alt="" style={{
+                  maxWidth: '100%', maxHeight: '100%', objectFit: 'contain',
+                }}/>
+              ) : (
+                <span style={{
+                  fontFamily: ST, fontStyle: 'italic', color: '#9A968F', fontSize: 13,
+                }}>no image yet</span>
+              )}
+            </div>
+            <button onClick={() => fileRef.current?.click()} style={{
+              width: '100%', padding: '8px 12px', borderRadius: 4,
+              border: `1px solid ${accent}55`, background: '#FFFFFF',
+              color: accent, fontFamily: MT, fontSize: 10,
+              letterSpacing: '.12em', textTransform: 'uppercase', cursor: 'pointer',
+            }}>{imageData ? 'pick a different image' : 'choose an image'}</button>
+            <input ref={fileRef} type="file" accept="image/*" onChange={onFile}
+              style={{ display: 'none' }}/>
+          </div>
+
+          <div>
+            <div style={{
+              fontSize: 8.5, letterSpacing: '.1em', textTransform: 'uppercase',
+              color: '#9A968F', marginBottom: 4,
+            }}>extracted shape</div>
+            <div style={{
+              aspectRatio: '1 / 1', background: '#FFFFFF',
+              border: '1px solid rgba(26,23,20,.10)', borderRadius: 4,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              overflow: 'hidden', position: 'relative', marginBottom: 8,
+            }}>
+              {extracted && extracted.path && !extracted.empty ? (
+                <svg viewBox="0 0 100 100" width="100%" height="100%">
+                  <path d={extracted.path} fill={accent + '22'} stroke={accent}
+                    strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"/>
+                </svg>
+              ) : working ? (
+                <span style={{
+                  fontFamily: MT, fontSize: 9, color: '#9A968F',
+                  letterSpacing: '.1em', textTransform: 'uppercase',
+                }}>extracting…</span>
+              ) : imageData ? (
+                <span style={{
+                  fontFamily: ST, fontStyle: 'italic', color: '#9A968F', fontSize: 13,
+                  textAlign: 'center', padding: '0 14px',
+                }}>nothing found — try raising the threshold</span>
+              ) : (
+                <span style={{ fontFamily: MT, fontSize: 9, color: '#C0BDB6' }}>preview</span>
+              )}
+            </div>
+            {extracted && extracted.pointCount > 0 && (
+              <div style={{
+                fontFamily: MT, fontSize: 8.5, color: '#9A968F',
+                letterSpacing: '.06em',
+              }}>{extracted.pointCount} points</div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          <SliderRow label="Background threshold" value={threshold}
+            min={10} max={180} step={2}
+            hint="raise for busier or coloured backgrounds"
+            onChange={setThreshold} disabled={!imageData}/>
+          <SliderRow label="Smoothing" value={epsilon}
+            min={0.5} max={6} step={0.1}
+            hint="higher = chunkier outline"
+            onChange={setEpsilon} disabled={!imageData}/>
+        </div>
+
+        <div style={{
+          marginTop: 14, display: 'flex', gap: 10, alignItems: 'center',
+        }}>
+          <input
+            placeholder="name this shape (optional)"
+            value={name} onChange={e => setName(e.target.value)}
+            style={{
+              flex: 1, padding: '8px 10px', borderRadius: 4,
+              border: '1px solid rgba(26,23,20,.15)', background: '#FFFFFF',
+              fontFamily: FT, fontSize: 12.5,
+            }}/>
+          <button onClick={trySave} disabled={!extracted || extracted.empty} style={{
+            padding: '8px 16px', borderRadius: 4, border: 'none',
+            background: (!extracted || extracted.empty) ? 'rgba(26,23,20,.10)' : accent,
+            color: (!extracted || extracted.empty) ? '#9A968F' : '#FAF5E9',
+            fontFamily: MT, fontSize: 10, letterSpacing: '.12em',
+            textTransform: 'uppercase', fontWeight: 600,
+            cursor: (!extracted || extracted.empty) ? 'default' : 'pointer',
+          }}>save shape</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function SliderRow({ label, value, min, max, step, hint, onChange, disabled }) {
+  return (
+    <div style={{ marginBottom: 10, opacity: disabled ? 0.5 : 1 }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+        marginBottom: 3,
+      }}>
+        <span style={{
+          fontFamily: MT, fontSize: 8.5, letterSpacing: '.1em',
+          textTransform: 'uppercase', color: '#5E5A55',
+        }}>{label}</span>
+        <span style={{
+          fontFamily: MT, fontSize: 10, color: '#1A1714', fontWeight: 500,
+        }}>{value}</span>
+      </div>
+      <input type="range" min={min} max={max} step={step}
+        value={value} disabled={disabled}
+        onChange={e => onChange(parseFloat(e.target.value))}
+        style={{ width: '100%' }}/>
+      {hint && (
+        <div style={{
+          fontFamily: FT, fontSize: 10, color: '#9A968F', fontStyle: 'italic',
+          marginTop: 2,
+        }}>{hint}</div>
+      )}
+    </div>
+  );
+}
+
 // Mini visual catalogue from the shape library. Renders 7 starter shapes
 // + 3 community-coined, plus an inert "draw your own / import" tile that
 // reads as a coming-soon affordance.
-export function ShapeLibrary({ palette, disabled, current, onPick }) {
-  const TileGrid = ({ ids, dim }) => (
+export function ShapeLibrary({
+  palette, disabled, current, onPick,
+  userShapes = [], onOpenExtractor, onDeleteUserShape,
+}) {
+  // Built-in shape tile — looked up in SHAPE_DEFS.
+  const BuiltinTile = ({ id }) => {
+    const isCurrent = current === id;
+    const def = SHAPE_DEFS[id];
+    return (
+      <button onClick={() => onPick(id)} title={def.label + (def.coiner ? ` · ${def.coiner}` : '')} style={{
+        position: "relative", height: 44, padding: 0,
+        background: isCurrent ? palette.bg : "#FFFFFF",
+        border: `1px solid ${isCurrent ? palette.accent : 'rgba(26,23,20,.10)'}`,
+        borderRadius: 4, cursor: "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        {id === 'rect' ? (
+          <div style={{
+            width: 28, height: 20, border: `1.5px solid ${isCurrent ? palette.accent : '#5E5A55'}`,
+            borderRadius: 2,
+          }} />
+        ) : (
+          <svg viewBox="0 0 100 100" width={28} height={28} style={{ display: 'block' }}>
+            <path d={def.path} fill="none"
+              stroke={isCurrent ? palette.accent : '#5E5A55'}
+              strokeWidth={4}
+              strokeLinejoin="round" strokeLinecap="round" />
+          </svg>
+        )}
+        {def.coiner && (
+          <span style={{
+            position: 'absolute', bottom: 2, right: 4,
+            fontFamily: MT, fontSize: 7.5, color: '#B0ADA6',
+          }}>{def.coiner.replace('@','')}</span>
+        )}
+      </button>
+    );
+  };
+
+  // User-extracted shape tile.
+  const UserTile = ({ shape }) => {
+    const isCurrent = current === shape.id;
+    return (
+      <div style={{ position: 'relative' }}>
+        <button onClick={() => onPick(shape.id)} title={shape.label || 'Your shape'} style={{
+          position: 'relative', height: 44, padding: 0, width: '100%',
+          background: isCurrent ? palette.bg : "#FFFFFF",
+          border: `1px solid ${isCurrent ? palette.accent : 'rgba(26,23,20,.10)'}`,
+          borderRadius: 4, cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <svg viewBox="0 0 100 100" width={28} height={28} style={{ display: 'block' }}>
+            <path d={shape.path} fill="none"
+              stroke={isCurrent ? palette.accent : '#5E5A55'}
+              strokeWidth={3}
+              strokeLinejoin="round" strokeLinecap="round" />
+          </svg>
+        </button>
+        {onDeleteUserShape && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDeleteUserShape(shape.id); }}
+            title="Delete this shape"
+            style={{
+              position: 'absolute', top: -5, right: -5,
+              width: 16, height: 16, borderRadius: '50%',
+              background: '#FFFFFF', border: '1px solid rgba(26,23,20,.18)',
+              color: '#5E5A55', fontSize: 9, lineHeight: 1, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 0,
+            }}>×</button>
+        )}
+      </div>
+    );
+  };
+
+  const UploadTile = () => (
+    <button onClick={onOpenExtractor} title="Upload an image and extract its shape"
+      style={{
+        height: 44, padding: "2px 4px", cursor: "pointer",
+        background: "transparent",
+        border: `1px dashed rgba(26,23,20,.20)`,
+        borderRadius: 4, color: "#9A968F",
+        fontFamily: FT, fontSize: 8.5, lineHeight: 1.2,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        textAlign: "center",
+      }}>+ upload<br/>image</button>
+  );
+
+  const sectionLabel = (text, mt = 9) => (
+    <div style={{
+      fontSize: 8.5, letterSpacing: ".08em", textTransform: "uppercase",
+      color: "#9A968F", fontFamily: FT, marginTop: mt, marginBottom: 4,
+    }}>{text}</div>
+  );
+
+  const grid = (children) => (
     <div style={{
       display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6,
-      opacity: dim ? 0.5 : 1, pointerEvents: dim ? "none" : "auto",
-    }}>
-      {ids.map(id => {
-        const isCurrent = current === id;
-        const def = SHAPE_DEFS[id];
-        return (
-          <button key={id} onClick={() => onPick(id)} title={def.label + (def.coiner ? ` · ${def.coiner}` : '')} style={{
-            position: "relative", height: 44, padding: 0,
-            background: isCurrent ? palette.bg : "#FFFFFF",
-            border: `1px solid ${isCurrent ? palette.accent : 'rgba(26,23,20,.10)'}`,
-            borderRadius: 4, cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            {id === 'rect' ? (
-              <div style={{
-                width: 28, height: 20, border: `1.5px solid ${isCurrent ? palette.accent : '#5E5A55'}`,
-                borderRadius: 2,
-              }} />
-            ) : (
-              <svg viewBox="0 0 100 100" width={28} height={28} style={{ display: 'block' }}>
-                <path d={def.path} fill="none"
-                  stroke={isCurrent ? palette.accent : '#5E5A55'}
-                  strokeWidth={4}
-                  strokeLinejoin="round" strokeLinecap="round" />
-              </svg>
-            )}
-            {def.coiner && (
-              <span style={{
-                position: 'absolute', bottom: 2, right: 4,
-                fontFamily: MT, fontSize: 7.5, color: '#B0ADA6',
-              }}>{def.coiner.replace('@','')}</span>
-            )}
-          </button>
-        );
-      })}
-      {/* Draw your own — coming-soon tile */}
-      <button onClick={() => alert('Draw / import — coming soon.')} title="Draw your own or import"
-        style={{
-          height: 44, padding: 0, cursor: "pointer",
-          background: "transparent",
-          border: `1px dashed rgba(26,23,20,.20)`,
-          borderRadius: 4, color: "#9A968F",
-          fontFamily: FT, fontSize: 8.5, lineHeight: 1.2,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          textAlign: "center", padding: "2px 4px",
-        }}>+ draw<br/>or import</button>
-    </div>
+      opacity: disabled ? 0.5 : 1, pointerEvents: disabled ? "none" : "auto",
+    }}>{children}</div>
   );
+
   return (
     <div>
-      <div style={{
-        fontSize: 8.5, letterSpacing: ".08em", textTransform: "uppercase",
-        color: "#9A968F", fontFamily: FT, marginBottom: 4,
-      }}>starter</div>
-      <TileGrid ids={STARTER_SHAPES} dim={disabled} />
-      <div style={{
-        fontSize: 8.5, letterSpacing: ".08em", textTransform: "uppercase",
-        color: "#9A968F", fontFamily: FT, marginTop: 9, marginBottom: 4,
-      }}>community</div>
-      <TileGrid ids={COMMUNITY_SHAPES} dim={disabled} />
+      {sectionLabel('starter', 0)}
+      {grid(STARTER_SHAPES.map(id => <BuiltinTile key={id} id={id} />))}
+      {sectionLabel('community')}
+      {grid(COMMUNITY_SHAPES.map(id => <BuiltinTile key={id} id={id} />))}
+      {sectionLabel('yours')}
+      {grid([
+        ...userShapes.map(s => <UserTile key={s.id} shape={s} />),
+        <UploadTile key="__upload" />,
+      ])}
     </div>
   );
 }
@@ -1514,6 +1817,14 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
   const [overrides, setOverrides] = useStateT(savedOverrides);
   const layoutDirty = designMode === 'rearrange' && JSON.stringify(overrides) !== JSON.stringify(savedOverrides);
   // Shape overrides
+  // User-extracted shape library — shared across all threads. Stored
+  // under mosaic.userShapes.v1; ShapeLibrary lists them in a "Yours"
+  // row, and resolveShapeDef looks them up when a card references a
+  // user-shape id.
+  const [userShapes, setUserShapes] = useStateT(() => loadUserShapes());
+  const [extractorOpen, setExtractorOpen] = useStateT(false);
+  const refreshUserShapes = () => setUserShapes(loadUserShapes());
+
   const [savedShapes, setSavedShapes] = useStateT(() => loadThreadShapes(thread.id));
   const [shapes, setShapes] = useStateT(savedShapes);
   const shapesDirty = designMode === 'shape' && JSON.stringify(shapes) !== JSON.stringify(savedShapes);
@@ -1817,6 +2128,9 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
           }}
           onPickBorderColor={setCardBorderColor}
           onPickBorderThickness={setCardBorderThickness}
+          userShapes={userShapes}
+          onOpenShapeExtractor={() => setExtractorOpen(true)}
+          onDeleteUserShape={(id) => { deleteUserShape(id); refreshUserShapes(); }}
           currentEther={ether}
           onPickEther={(e) => setEther(e)}
           onUploadEther={(e) => setEther(e)} />
@@ -2237,6 +2551,22 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
     );
   })();
 
+  const extractorModal = (
+    <ShapeExtractor
+      open={extractorOpen}
+      palette={palette}
+      onClose={() => setExtractorOpen(false)}
+      onSaved={(shape) => {
+        const saved = saveUserShape(shape);
+        refreshUserShapes();
+        // Apply the newly-saved shape to the selected card if there's
+        // one in scope, so the upload → save → see-it flow is one
+        // motion.
+        if (selectedCardKey) setCardShape(selectedCardKey, saved.id);
+      }}
+    />
+  );
+
   // ============ GRID VIEW (are.na-style) ============
   // Chronological masonry grid of every find and note in this thread.
   // Newest first, reading row by row (top-left → bottom-right). Each tile
@@ -2268,6 +2598,7 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
         {viewToggle}
         {apertures.map((a, i) => <ApT key={i} {...a} />)}
         {cardOverlay}
+        {extractorModal}
       </>
     );
   }
@@ -2331,6 +2662,7 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
           onScrub={setHeadDays}
         />
         {cardOverlay}
+        {extractorModal}
 
         <div style={{
           paddingTop: 170, paddingLeft: 40, paddingRight: 40, paddingBottom: 100,
@@ -2533,6 +2865,7 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
           {identityCard}
           {viewToggle}
           {cardOverlay}
+          {extractorModal}
           {canEdit && queuedFinds.length > 0 && (
             <QueueDock
               queued={queuedFinds}
@@ -2635,6 +2968,7 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
                 editing={layoutEdit} onDragMove={setCardPos}>
                 <FindCard find={F.f} x={F.x} y={F.y} palette={palette}
                   shapeId={shapes[F.key] || 'rect'}
+                  userShapes={userShapes}
                   borderOverride={borders[F.key] || null}
                   selected={(shapeEdit || borderEdit) && selectedCardKey === F.key}
                   onOpen={() => {
@@ -2660,6 +2994,7 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
                 editing={layoutEdit} onDragMove={setCardPos}>
                 <NoteCard note={N.n} x={N.x} y={N.y} palette={palette}
                   shapeId={shapes[N.key] || 'rect'}
+                  userShapes={userShapes}
                   borderOverride={borders[N.key] || null}
                   selected={(shapeEdit || borderEdit) && selectedCardKey === N.key}
                   onOpen={() => {

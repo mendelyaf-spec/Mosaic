@@ -15,6 +15,7 @@ const LAYOUT_KEY   = 'mosaic.threadLayouts.v1';
 const SHAPES_KEY   = 'mosaic.threadShapes.v1';
 const ETHER_KEY    = 'mosaic.threadEther.v1';
 const BORDERS_KEY  = 'mosaic.threadBorders.v1';
+const USER_SHAPES_KEY = 'mosaic.userShapes.v1';
 
 export function loadUserThreads() {
   return readStored(THREADS_KEY, []);
@@ -145,6 +146,29 @@ export function saveHomeBorders(v){ writeStored(HOME_BORDERS_KEY, v || {}); }
 export function loadHomeEther()   { return readStored(HOME_ETHER_KEY,   null); }
 export function saveHomeEther(v) {
   writeStored(HOME_ETHER_KEY, v || null);
+}
+
+// User-extracted card shapes. Each entry is
+// { id, label, path, preview, createdAt }. Path is an SVG outline in
+// the same 0..100 viewBox as the built-in SHAPE_DEFS, so it slots into
+// the Shape library next to starter and community shapes. preview is
+// a dataURL thumbnail rendered from the extracted silhouette.
+export function loadUserShapes() {
+  return readStored(USER_SHAPES_KEY, []);
+}
+
+export function saveUserShape(shape) {
+  const all = loadUserShapes();
+  const id = shape.id || ('u-' + Date.now().toString(36));
+  const next = { ...shape, id, createdAt: shape.createdAt || Date.now() };
+  const idx = all.findIndex(s => s.id === id);
+  if (idx >= 0) all[idx] = next; else all.push(next);
+  writeStored(USER_SHAPES_KEY, all);
+  return next;
+}
+
+export function deleteUserShape(id) {
+  writeStored(USER_SHAPES_KEY, loadUserShapes().filter(s => s.id !== id));
 }
 
 // "Stumble — save a find" workflow. Items saved from the Promenade enter
