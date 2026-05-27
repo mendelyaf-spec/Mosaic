@@ -19,6 +19,8 @@ import {
   loadThreadLayout, saveThreadLayout,
   loadThreadShapes, saveThreadShapes,
 } from '../lib/threads.js';
+import { deriveFindMedia, deriveNoteMedia } from '../lib/promenade.js';
+import { Thumbnail } from './PromenadeThumbnail.jsx';
 
 // ── Shape library — atomic shapes that wrap a card ────────────────
 // Each entry is an SVG path drawn in a 100×100 viewBox. preserveAspectRatio
@@ -635,6 +637,128 @@ function ShapeLibrary({ palette, disabled, current, onPick }) {
   );
 }
 
+// Grid view — chronological masonry inspired by an are.na block channel.
+// Items render at a uniform tile width with the same SVG thumbnails the
+// Promenade uses. Newest first; hover reveals title + meta; click opens
+// the same activeCard overlay the spatial and timeline views use.
+const GRID_TILE_W = 280;
+function GridView({ thread, palette, chrome, onOpenFind, onOpenNote }) {
+  const items = [
+    ...thread.fl.map(f => ({ kind: 'find', data: f, days: ageToDays(f.d), age: f.d })),
+    ...(thread.notesList || []).map(n => ({ kind: 'note', data: n, days: ageToDays(n.d), age: n.d })),
+  ];
+  // Newest first — smaller days-ago = more recent.
+  items.sort((a, b) => a.days - b.days);
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "#FBFAF6",
+      overflowY: "auto",
+    }}>
+      {chrome.header}
+      {chrome.breadcrumb}
+      {chrome.identityCard}
+      {chrome.viewToggle}
+      {chrome.apertures.map((a, i) => <ApT key={i} {...a} />)}
+      {chrome.cardOverlay}
+      <div style={{
+        paddingTop: 170, paddingLeft: 40, paddingRight: 40, paddingBottom: 80,
+      }}>
+        <div style={{
+          fontFamily: FT, fontSize: 11, letterSpacing: '.16em',
+          textTransform: 'uppercase', color: '#9A968F', marginBottom: 18,
+        }}>{items.length} items · chronological · newest first</div>
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(auto-fill, minmax(${GRID_TILE_W}px, 1fr))`,
+          gap: 16,
+        }}>
+          {items.map((it, idx) => (
+            <GridTile key={idx} item={it} palette={palette}
+              onOpen={() => it.kind === 'find' ? onOpenFind(it.data) : onOpenNote(it.data)} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GridTile({ item, palette, onOpen }) {
+  const [hover, setHover] = useStateT(false);
+  const isFind = item.kind === 'find';
+  const titleText = isFind ? item.data.t : item.data.cap;
+  const sourceText = isFind
+    ? (item.data.s || '')
+    : (item.data.type === 'audio' ? 'audio note' : item.data.type === 'image' ? 'image note' : 'written note');
+  const media = isFind
+    ? deriveFindMedia({
+        id: item.data.id || `f-${titleText}-${item.age}`,
+        glyph: item.data.i, source: item.data.s || '', title: titleText,
+      })
+    : deriveNoteMedia({
+        id: `n-${titleText}-${item.age}`,
+        noteType: item.data.type, glyph: '', title: titleText, dur: item.data.dur,
+      });
+  return (
+    <div onClick={onOpen}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        position: 'relative', cursor: 'pointer',
+        background: '#FFFFFF',
+        border: '1px solid rgba(26,23,20,.08)',
+        overflow: 'hidden',
+        transition: 'box-shadow .15s, transform .15s',
+        boxShadow: hover ? '0 8px 22px rgba(40,30,15,.10)' : '0 1px 2px rgba(40,30,15,.04)',
+      }}>
+      {media
+        ? <Thumbnail media={media} kind={item.kind} width={GRID_TILE_W} />
+        : <GridQuoteBand text={titleText} />}
+      {/* Bottom strip — always visible, restrained */}
+      <div style={{
+        padding: '10px 12px',
+        fontFamily: FT, fontSize: 11.5, lineHeight: 1.35, color: '#3A3530',
+        borderTop: '1px solid rgba(26,23,20,.05)',
+        display: 'flex', flexDirection: 'column', gap: 3,
+      }}>
+        <div style={{
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+          overflow: 'hidden', textOverflow: 'ellipsis',
+          fontFamily: ST, fontSize: 13, color: '#1A1714',
+        }}>{titleText}</div>
+        <div style={{
+          fontFamily: MT, fontSize: 9.5, color: '#9A968F',
+          letterSpacing: '.04em',
+          display: 'flex', justifyContent: 'space-between', gap: 8,
+        }}>
+          <span style={{
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
+          }}>{sourceText}</span>
+          <span style={{ flexShrink: 0, color: palette.accent + 'AA' }}>{item.age}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GridQuoteBand({ text }) {
+  return (
+    <div style={{
+      width: '100%', aspectRatio: '16 / 9',
+      background: 'linear-gradient(135deg, #f0ead8 0%, #e6dec8 100%)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '14px 18px',
+    }}>
+      <div style={{
+        fontFamily: ST, fontStyle: 'italic',
+        fontSize: 14, lineHeight: 1.35, color: '#4a453c',
+        textAlign: 'center', textWrap: 'pretty', maxWidth: '92%',
+        display: '-webkit-box', WebkitLineClamp: 4,
+        WebkitBoxOrient: 'vertical', overflow: 'hidden',
+      }}>&ldquo;{text}&rdquo;</div>
+    </div>
+  );
+}
+
 function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null }) {
   const palette = WM.DOMAIN[thread.dc];
   const canvasW = 3200, canvasH = 2000;
@@ -867,6 +991,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
         {[
           { id: "spatial",  l: "Spatial" },
           { id: "timeline", l: "Timeline" },
+          { id: "grid",     l: "Grid" },
         ].map(m => (
           <button key={m.id} onClick={() => setThreadView(m.id)} style={{
             fontSize: 10, fontWeight: 500, padding: "3px 9px", borderRadius: 9,
@@ -1321,6 +1446,24 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
       </>
     );
   })();
+
+  // ============ GRID VIEW (are.na-style) ============
+  // Chronological masonry grid of every find and note in this thread.
+  // Newest first, reading row by row (top-left → bottom-right). Each tile
+  // is the same SVG thumbnail used on the Promenade — books, waveforms,
+  // duotone photos — so the grid reads as media-rich without any raster
+  // assets. Click a tile to open it (same overlay as the other views).
+  if (threadView === "grid") {
+    return (
+      <GridView
+        thread={thread}
+        palette={palette}
+        chrome={{ header, breadcrumb, identityCard, viewToggle, apertures, cardOverlay }}
+        onOpenFind={(find) => { setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "find", data: find }); }}
+        onOpenNote={(note) => { setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "note", data: note }); }}
+      />
+    );
+  }
 
   // ============ TIMELINE VIEW ============
   // Single-thread linear timeline — same metaphor as home's timeline view,

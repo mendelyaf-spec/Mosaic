@@ -45,7 +45,7 @@ function pickHue(seed) {
   return palettes[seed % palettes.length];
 }
 
-function deriveFindMedia(item) {
+export function deriveFindMedia(item) {
   const seed = hash(item.id);
   const r = rng(seed);
   const hue = pickHue(seed);
@@ -92,7 +92,7 @@ function deriveFindMedia(item) {
   }
 }
 
-function deriveNoteMedia(item) {
+export function deriveNoteMedia(item) {
   const seed = hash(item.id);
   const hue = pickHue(seed);
   if (item.noteType === 'audio') {
