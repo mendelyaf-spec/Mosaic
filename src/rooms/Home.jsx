@@ -689,6 +689,20 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
             transition: "all .15s",
           }}>{m.l}</button>
         ))}
+        <button
+          onClick={() => {
+            if (viewMode !== 'spatial') setViewMode('spatial');
+            if (designMode === 'off') enterMode('rearrange');
+          }}
+          title="Rearrange clusters, pick shapes, borders, ether"
+          style={{
+            fontSize: 10, fontWeight: 500, padding: "3px 9px", borderRadius: 9,
+            cursor: "pointer", fontFamily: FH,
+            border: `1px solid ${designMode !== 'off' ? "#1A5C46" : "rgba(26,92,70,.4)"}`,
+            background: designMode !== 'off' ? "#E3EEE9" : "rgba(246,243,236,.7)",
+            color: "#1A5C46",
+            transition: "all .15s",
+          }}>✦ Design</button>
       </div>
     </div>
   );
@@ -980,44 +994,37 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
 
   // ============ SPATIAL VIEW ============
   const hasEther = !!homeEtherEdit;
-  const designButton = (
-    <div data-ui style={{ position: "fixed", top: 24, right: 24, zIndex: 21 }}>
-      {designMode === 'off' && (
-        <button onClick={() => enterMode('rearrange')} style={{
-          fontSize: 10, fontWeight: 500, padding: "4px 10px",
-          borderRadius: 9, cursor: "pointer", fontFamily: FH,
-          border: `1px solid ${homePalette.accent}66`,
-          background: "rgba(255,255,255,.85)", color: homePalette.accent,
-        }} title="Rearrange, shape, or design the constellation">✦ Design</button>
-      )}
-      {designMode !== 'off' && (
-        <DesignPanel
-          mode={designMode}
-          onSwitch={(next) => enterMode(next)}
-          palette={homePalette}
-          layoutDirty={layoutDirty}
-          shapesDirty={shapesDirty}
-          bordersDirty={bordersDirty}
-          etherDirty={etherDirty}
-          onLockLayout={lockLayout}
-          onLockShapes={lockShapes}
-          onLockBorders={lockBorders}
-          onLockEther={lockEther}
-          onResetLayout={resetLayout}
-          onResetShapes={resetShapes}
-          onResetBorders={resetBorders}
-          onResetEther={resetEther}
-          onExit={exitDesign}
-          selectedCardKey={selectedClusterId}
-          currentShapeForSelected={selectedClusterId ? (homeShapesEdit[selectedClusterId] || 'rect') : null}
-          currentBorderForSelected={selectedClusterId ? (homeBordersEdit[selectedClusterId] || null) : null}
-          onPickShape={(s) => selectedClusterId && setClusterShape(selectedClusterId, s)}
-          onPickBorderColor={setClusterBorderColor}
-          onPickBorderThickness={setClusterBorderThickness}
-          currentEther={homeEtherEdit}
-          onPickEther={(e) => setHomeEtherEdit(e)}
-          onUploadEther={(e) => setHomeEtherEdit(e)} />
-      )}
+  // The Design entry now lives inside periodPills (next to Spatial /
+  // Timeline). The panel itself docks under it at the top-left when
+  // designMode !== 'off'.
+  const designPanel = designMode === 'off' ? null : (
+    <div data-ui style={{ position: "fixed", top: 110, left: 24, zIndex: 22 }}>
+      <DesignPanel
+        mode={designMode}
+        onSwitch={(next) => enterMode(next)}
+        palette={homePalette}
+        layoutDirty={layoutDirty}
+        shapesDirty={shapesDirty}
+        bordersDirty={bordersDirty}
+        etherDirty={etherDirty}
+        onLockLayout={lockLayout}
+        onLockShapes={lockShapes}
+        onLockBorders={lockBorders}
+        onLockEther={lockEther}
+        onResetLayout={resetLayout}
+        onResetShapes={resetShapes}
+        onResetBorders={resetBorders}
+        onResetEther={resetEther}
+        onExit={exitDesign}
+        selectedCardKey={selectedClusterId}
+        currentShapeForSelected={selectedClusterId ? (homeShapesEdit[selectedClusterId] || 'rect') : null}
+        currentBorderForSelected={selectedClusterId ? (homeBordersEdit[selectedClusterId] || null) : null}
+        onPickShape={(s) => selectedClusterId && setClusterShape(selectedClusterId, s)}
+        onPickBorderColor={setClusterBorderColor}
+        onPickBorderThickness={setClusterBorderThickness}
+        currentEther={homeEtherEdit}
+        onPickEther={(e) => setHomeEtherEdit(e)}
+        onUploadEther={(e) => setHomeEtherEdit(e)} />
     </div>
   );
   return (
@@ -1036,7 +1043,7 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
           {courtyardsPanel}
           {apertures.map((a, i) => <ApertureH key={i} {...a} />)}
           {breadcrumb}
-          {designButton}
+          {designPanel}
         </>
       }>
       {({ zoom: zz }) => (

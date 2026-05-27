@@ -1591,7 +1591,13 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
   );
 
   // View-mode toggle — top-left, mirrors home's chrome
-  const showRearrange = canEdit && threadView === 'spatial';
+  // Design is available whenever you own the thread (the tools auto-switch
+  // to spatial since that's where they have something to act on).
+  const showRearrange = canEdit;
+  const enterDesign = () => {
+    if (threadView !== 'spatial') setThreadView('spatial');
+    if (designMode === 'off') enterRearrange();
+  };
   const viewToggle = (
     <div data-ui style={{
       position: "fixed", top: 24, left: 24, zIndex: 21,
@@ -1616,17 +1622,17 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
             transition: "all .15s",
           }}>{m.l}</button>
         ))}
+        {showRearrange && (
+          <button onClick={enterDesign} title="Rearrange, shape, border, ether" style={{
+            fontSize: 10, fontWeight: 500, padding: "3px 9px", borderRadius: 9,
+            cursor: "pointer", fontFamily: FT,
+            border: `1px solid ${designMode !== 'off' ? palette.accent : palette.accent + "66"}`,
+            background: designMode !== 'off' ? palette.bg : "rgba(246,243,236,.7)",
+            color: palette.accent,
+            transition: "all .15s",
+          }}>✦ Design</button>
+        )}
       </div>
-      {showRearrange && designMode === 'off' && (
-        <button onClick={enterRearrange} style={{
-          marginTop: 6, fontSize: 9.5, fontWeight: 500, padding: "4px 10px",
-          borderRadius: 9, cursor: "pointer", fontFamily: FT,
-          border: `1px solid ${palette.accent}66`,
-          background: "rgba(255,255,255,.85)", color: palette.accent,
-        }} title="Open the design toolbar — rearrange cards and pick shapes">
-          ✦ Design
-        </button>
-      )}
       {showRearrange && designMode !== 'off' && (
         <DesignPanel
           mode={designMode}
