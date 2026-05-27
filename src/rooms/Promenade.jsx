@@ -82,19 +82,8 @@ function WanderCard({ item, x, y, rot, onOpen, detail }) {
       style={{
         position: 'absolute', left: x, top: y,
         width: w,
-        transform: `translate(-50%,-50%) rotate(${rot}deg)`,
-        transformOrigin: 'center',
+        transform: 'translate(-50%,-50%)',
         cursor: 'pointer',
-        transition: 'transform .18s ease, filter .18s ease',
-        willChange: 'transform',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.transform = `translate(-50%,-50%) rotate(${rot * 0.4}deg) scale(1.03)`;
-        e.currentTarget.style.filter = 'drop-shadow(0 14px 28px rgba(40,30,15,.18))';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = `translate(-50%,-50%) rotate(${rot}deg)`;
-        e.currentTarget.style.filter = 'none';
       }}>
       <div style={{
         background: P.paperCard,

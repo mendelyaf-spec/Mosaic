@@ -103,11 +103,8 @@ function ThreadCluster({
          style={{
       position: "absolute", left: pos.x, top: pos.y,
       width: 380, cursor: editMode === 'rearrange' ? 'grab' : 'pointer',
-      transition: "transform .25s cubic-bezier(.4,0,.2,1)",
       touchAction: editMode === 'rearrange' ? 'none' : 'auto',
-      transform: centerAnchor
-        ? (hover ? "translate(-50%, calc(-50% - 3px))" : "translate(-50%, -50%)")
-        : (hover ? "translateY(-3px)" : "translateY(0)"),
+      transform: centerAnchor ? "translate(-50%, -50%)" : "none",
     }}>
       {thread.mileMarkers && thread.mileMarkers.length > 1 && (
         <div style={{ paddingLeft: 14, marginBottom: 6 }}>

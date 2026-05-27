@@ -348,9 +348,7 @@ function MileMarker({ mm, x, y, isCurrent, palette, onOpen }) {
       position: "absolute", left: x, top: y,
       transform: "translate(-50%, -50%)",
       maxWidth: 280, cursor: "pointer",
-    }}
-    onMouseEnter={e => { e.currentTarget.style.transform = "translate(-50%, -50%) translateY(-2px)"; }}
-    onMouseLeave={e => { e.currentTarget.style.transform = "translate(-50%, -50%)"; }}>
+    }}>
       <div style={{
         display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
       }}>
@@ -422,9 +420,7 @@ function FindCard({ find, x, y, palette, onOpen, onShared, shapeId = 'rect', sha
       transition: "box-shadow .2s, transform .2s",
       outline: selected ? `2px solid ${palette.accent}` : 'none',
       outlineOffset: selected ? 6 : 0,
-    }}
-    onMouseEnter={e => { if (!shaped) { e.currentTarget.style.boxShadow = "0 6px 22px rgba(26,23,20,.1)"; e.currentTarget.style.transform = "translateY(-2px)"; } }}
-    onMouseLeave={e => { if (!shaped) { e.currentTarget.style.boxShadow = shared ? `0 4px 14px ${palette.accent}22, 0 2px 10px rgba(26,23,20,.05)` : "0 2px 10px rgba(26,23,20,.05)"; e.currentTarget.style.transform = "translateY(0)"; } }}>
+    }}>
       {shaped && (
         <svg viewBox="0 0 100 100" preserveAspectRatio="none"
           style={{
@@ -503,7 +499,7 @@ function NoteCard({ note, x, y, palette, onOpen, onShared, shapeId = 'rect', sha
             : `1px solid ${palette.accent}33`),
       borderRadius: 6,
       padding: "10px 12px",
-      transform: shaped ? "none" : "rotate(-1deg)",
+      transform: "none",
       boxShadow: shaped ? "none" : "0 2px 10px rgba(26,23,20,.06)",
       outline: selected ? `2px solid ${palette.accent}` : 'none',
       outlineOffset: selected ? 6 : 0,
