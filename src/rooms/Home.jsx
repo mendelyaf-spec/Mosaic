@@ -16,6 +16,7 @@ import {
   getAllThreads, getThreadById, deleteThread,
   loadHomeLayout, saveHomeLayout,
   loadHomeShapes, saveHomeShapes,
+  loadHomeShapeScales, saveHomeShapeScales,
   loadHomeBorders, saveHomeBorders,
   loadHomeEther, saveHomeEther,
 } from '../lib/threads.js';
@@ -30,6 +31,7 @@ function ThreadCluster({
   editMode = 'off',          // 'off' | 'rearrange' | 'shape' | 'border'
   zoom = 1,
   shapeId = 'rect',
+  shapeScale = 1,
   borderOverride = null,
   selected = false,
   onMove,                    // (threadId, { x, y }) => void
@@ -214,10 +216,14 @@ function ThreadCluster({
               width: '100%', height: '100%',
               pointerEvents: 'none', overflow: 'visible',
             }}>
-            <path d={SHAPE_DEFS[shapeId].path} fill="none"
-              stroke={customBorder ? (bColor || pal.accent) : (pal.accent + 'AA')}
-              strokeWidth={customBorder ? (bPx || 1.6) : 1.6}
-              vectorEffect="non-scaling-stroke" />
+            <g transform={shapeScale !== 1
+              ? `translate(50 50) scale(${shapeScale}) translate(-50 -50)`
+              : undefined}>
+              <path d={SHAPE_DEFS[shapeId].path} fill="none"
+                stroke={customBorder ? (bColor || pal.accent) : (pal.accent + 'AA')}
+                strokeWidth={customBorder ? (bPx || 1.6) : 1.6}
+                vectorEffect="non-scaling-stroke" />
+            </g>
           </svg>
         )}
         {onDelete && (
@@ -469,6 +475,8 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
   const [homeLayoutEdit,   setHomeLayoutEdit]   = useStateH(savedHomeLayout);
   const [savedHomeShapes,  setSavedHomeShapes]  = useStateH(() => loadHomeShapes());
   const [homeShapesEdit,   setHomeShapesEdit]   = useStateH(savedHomeShapes);
+  const [savedHomeShapeScales, setSavedHomeShapeScales] = useStateH(() => loadHomeShapeScales());
+  const [homeShapeScalesEdit,  setHomeShapeScalesEdit]  = useStateH(savedHomeShapeScales);
   const [savedHomeBorders, setSavedHomeBorders] = useStateH(() => loadHomeBorders());
   const [homeBordersEdit,  setHomeBordersEdit]  = useStateH(savedHomeBorders);
   const [savedHomeEther,   setSavedHomeEther]   = useStateH(() => loadHomeEther());
@@ -476,12 +484,16 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
   const [selectedClusterId, setSelectedClusterId] = useStateH(null);
   const [canvasZoom, setCanvasZoom] = useStateH(ZOOM_DEFAULT);
   const layoutDirty  = designMode === 'rearrange' && JSON.stringify(homeLayoutEdit)  !== JSON.stringify(savedHomeLayout);
-  const shapesDirty  = designMode === 'shape'     && JSON.stringify(homeShapesEdit)  !== JSON.stringify(savedHomeShapes);
+  const shapesDirty  = designMode === 'shape'     && (
+    JSON.stringify(homeShapesEdit)  !== JSON.stringify(savedHomeShapes) ||
+    JSON.stringify(homeShapeScalesEdit) !== JSON.stringify(savedHomeShapeScales)
+  );
   const bordersDirty = designMode === 'border'    && JSON.stringify(homeBordersEdit) !== JSON.stringify(savedHomeBorders);
   const etherDirty   = designMode === 'ether'     && JSON.stringify(homeEtherEdit)   !== JSON.stringify(savedHomeEther);
   const enterMode = (m) => {
     setHomeLayoutEdit(savedHomeLayout);
     setHomeShapesEdit(savedHomeShapes);
+    setHomeShapeScalesEdit(savedHomeShapeScales);
     setHomeBordersEdit(savedHomeBorders);
     setHomeEtherEdit(savedHomeEther);
     setSelectedClusterId(null);
@@ -489,11 +501,17 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
   };
   const exitDesign = () => { enterMode('off'); };
   const lockLayout  = () => { saveHomeLayout(homeLayoutEdit);   setSavedHomeLayout(homeLayoutEdit);   setDesignMode('off'); };
-  const lockShapes  = () => { saveHomeShapes(homeShapesEdit);   setSavedHomeShapes(homeShapesEdit);   setSelectedClusterId(null); setDesignMode('off'); };
+  const lockShapes  = () => {
+    saveHomeShapes(homeShapesEdit);
+    saveHomeShapeScales(homeShapeScalesEdit);
+    setSavedHomeShapes(homeShapesEdit);
+    setSavedHomeShapeScales(homeShapeScalesEdit);
+    setSelectedClusterId(null); setDesignMode('off');
+  };
   const lockBorders = () => { saveHomeBorders(homeBordersEdit); setSavedHomeBorders(homeBordersEdit); setSelectedClusterId(null); setDesignMode('off'); };
   const lockEther   = () => { saveHomeEther(homeEtherEdit);     setSavedHomeEther(homeEtherEdit);     setDesignMode('off'); };
   const resetLayout  = () => setHomeLayoutEdit({});
-  const resetShapes  = () => { setHomeShapesEdit({}); setSelectedClusterId(null); };
+  const resetShapes  = () => { setHomeShapesEdit({}); setHomeShapeScalesEdit({}); setSelectedClusterId(null); };
   const resetBorders = () => { setHomeBordersEdit({}); setSelectedClusterId(null); };
   const resetEther   = () => setHomeEtherEdit(null);
   const setClusterPos    = (tid, p) => setHomeLayoutEdit(prev => ({ ...prev, [tid]: p }));
@@ -502,6 +520,15 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
     if (!s || s === 'rect') delete next[tid]; else next[tid] = s;
     return next;
   });
+  const setClusterShapeScale = (scale) => {
+    if (!selectedClusterId) return;
+    setHomeShapeScalesEdit(prev => {
+      const next = { ...prev };
+      if (Math.abs(scale - 1) < 0.001) delete next[selectedClusterId];
+      else next[selectedClusterId] = scale;
+      return next;
+    });
+  };
   const setClusterBorderColor     = (color)     => selectedClusterId && setHomeBordersEdit(prev => ({ ...prev, [selectedClusterId]: { ...(prev[selectedClusterId] || {}), color } }));
   const setClusterBorderThickness = (thickness) => selectedClusterId && setHomeBordersEdit(prev => ({ ...prev, [selectedClusterId]: { ...(prev[selectedClusterId] || {}), thickness } }));
   // The "Maya" persona accent — used for the design panel highlights on
@@ -1148,6 +1175,8 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
         currentShapeForSelected={selectedClusterId ? (homeShapesEdit[selectedClusterId] || 'rect') : null}
         currentBorderForSelected={selectedClusterId ? (homeBordersEdit[selectedClusterId] || null) : null}
         onPickShape={(s) => selectedClusterId && setClusterShape(selectedClusterId, s)}
+        currentShapeScale={selectedClusterId ? (homeShapeScalesEdit[selectedClusterId] ?? 1) : 1}
+        onPickShapeScale={setClusterShapeScale}
         onPickBorderColor={setClusterBorderColor}
         onPickBorderThickness={setClusterBorderThickness}
         currentEther={homeEtherEdit}
@@ -1295,6 +1324,7 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
                   editMode={designMode}
                   zoom={canvasZoom}
                   shapeId={homeShapesEdit[t.id] || 'rect'}
+                  shapeScale={homeShapeScalesEdit[t.id] ?? 1}
                   borderOverride={homeBordersEdit[t.id] || null}
                   selected={(designMode === 'shape' || designMode === 'border') && selectedClusterId === t.id}
                   onMove={setClusterPos}

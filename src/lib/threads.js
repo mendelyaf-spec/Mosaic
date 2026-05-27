@@ -16,6 +16,8 @@ const SHAPES_KEY   = 'mosaic.threadShapes.v1';
 const ETHER_KEY    = 'mosaic.threadEther.v1';
 const BORDERS_KEY  = 'mosaic.threadBorders.v1';
 const USER_SHAPES_KEY = 'mosaic.userShapes.v1';
+const SHAPE_SCALES_KEY = 'mosaic.threadShapeScales.v1';
+const HOME_SHAPE_SCALES_KEY = 'mosaic.homeShapeScales.v1';
 
 export function loadUserThreads() {
   return readStored(THREADS_KEY, []);
@@ -95,6 +97,25 @@ export function saveThreadShapes(threadId, shapes) {
   writeStored(SHAPES_KEY, all);
 }
 
+// Per-card shape-scale overrides ({ [cardKey]: number }). 1.0 = card
+// bounds, <1 = shrunk inward, >1 = enlarged past the card edge. The
+// shape outline scales around the centre of its viewBox so the card's
+// own rectangular content stays in place. Stored next to shapes; the
+// Shape tab in the Design panel exposes a size slider for the
+// currently-selected card.
+export function loadThreadShapeScales(threadId) {
+  if (!threadId) return {};
+  const all = readStored(SHAPE_SCALES_KEY, {});
+  return all[threadId] || {};
+}
+
+export function saveThreadShapeScales(threadId, scales) {
+  if (!threadId) return;
+  const all = readStored(SHAPE_SCALES_KEY, {});
+  all[threadId] = scales || {};
+  writeStored(SHAPE_SCALES_KEY, all);
+}
+
 // Per-thread "ether" — the background treatment of the spatial view.
 // Either { kind: 'preset', value: presetId } for a built-in pattern, or
 // { kind: 'image', dataUrl: 'data:image/...' } for an uploaded image.
@@ -143,6 +164,8 @@ export function loadHomeShapes()  { return readStored(HOME_SHAPES_KEY,  {}); }
 export function saveHomeShapes(v) { writeStored(HOME_SHAPES_KEY,  v || {}); }
 export function loadHomeBorders() { return readStored(HOME_BORDERS_KEY, {}); }
 export function saveHomeBorders(v){ writeStored(HOME_BORDERS_KEY, v || {}); }
+export function loadHomeShapeScales()  { return readStored(HOME_SHAPE_SCALES_KEY, {}); }
+export function saveHomeShapeScales(v) { writeStored(HOME_SHAPE_SCALES_KEY, v || {}); }
 export function loadHomeEther()   { return readStored(HOME_ETHER_KEY,   null); }
 export function saveHomeEther(v) {
   writeStored(HOME_ETHER_KEY, v || null);

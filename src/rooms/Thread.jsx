@@ -19,6 +19,7 @@ import {
   getThreadById,
   loadThreadLayout, saveThreadLayout,
   loadThreadShapes, saveThreadShapes,
+  loadThreadShapeScales, saveThreadShapeScales,
   loadThreadEther, saveThreadEther,
   loadThreadBorders, saveThreadBorders,
   placeQueuedFind, dismissQueuedFind,
@@ -394,13 +395,16 @@ function resolveShapeDef(shapeId, userShapes) {
   return null;
 }
 
-function FindCard({ find, x, y, palette, onOpen, onShared, shapeId = 'rect', userShapes = [], selected = false, borderOverride = null }) {
+function FindCard({ find, x, y, palette, onOpen, onShared, shapeId = 'rect', shapeScale = 1, userShapes = [], selected = false, borderOverride = null }) {
   const shared = !!find.sharedWith;
   const shapeDef = resolveShapeDef(shapeId, userShapes);
   const shaped = !!shapeDef;
   const borderColor = borderOverride?.color;
   const borderPx    = borderOverride?.thickness;
   const customBorder = !!(borderColor || borderPx);
+  const scaleTransform = shapeScale !== 1
+    ? `translate(50 50) scale(${shapeScale}) translate(-50 -50)`
+    : undefined;
   return (
     <div data-card onClick={onOpen} style={{
       position: "absolute", left: x, top: y,
@@ -428,10 +432,12 @@ function FindCard({ find, x, y, palette, onOpen, onShared, shapeId = 'rect', use
             width: '100%', height: '100%',
             pointerEvents: 'none', overflow: 'visible',
           }}>
-          <path d={shapeDef.path} fill="none"
-            stroke={customBorder ? (borderColor || palette.accent) : (palette.accent + 'CC')}
-            strokeWidth={customBorder ? (borderPx || 1.6) : 1.6}
-            vectorEffect="non-scaling-stroke" />
+          <g transform={scaleTransform}>
+            <path d={shapeDef.path} fill="none"
+              stroke={customBorder ? (borderColor || palette.accent) : (palette.accent + 'CC')}
+              strokeWidth={customBorder ? (borderPx || 1.6) : 1.6}
+              vectorEffect="non-scaling-stroke" />
+          </g>
         </svg>
       )}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
@@ -474,11 +480,14 @@ function FindCard({ find, x, y, palette, onOpen, onShared, shapeId = 'rect', use
   );
 }
 
-function NoteCard({ note, x, y, palette, onOpen, onShared, shapeId = 'rect', userShapes = [], selected = false, borderOverride = null }) {
+function NoteCard({ note, x, y, palette, onOpen, onShared, shapeId = 'rect', shapeScale = 1, userShapes = [], selected = false, borderOverride = null }) {
   const icon = note.type === "audio" ? "\ud83c\udf99" : note.type === "image" ? "\ud83d\udcf8" : "\u270e";
   const shared = !!note.sharedWith;
   const shapeDef = resolveShapeDef(shapeId, userShapes);
   const shaped = !!shapeDef;
+  const scaleTransform = shapeScale !== 1
+    ? `translate(50 50) scale(${shapeScale}) translate(-50 -50)`
+    : undefined;
   const borderColor = borderOverride?.color;
   const borderPx    = borderOverride?.thickness;
   const customBorder = !!(borderColor || borderPx);
@@ -506,10 +515,12 @@ function NoteCard({ note, x, y, palette, onOpen, onShared, shapeId = 'rect', use
             width: '100%', height: '100%',
             pointerEvents: 'none', overflow: 'visible',
           }}>
-          <path d={shapeDef.path} fill="none"
-            stroke={customBorder ? (borderColor || palette.accent) : (palette.accent + 'CC')}
-            strokeWidth={customBorder ? (borderPx || 1.6) : 1.6}
-            vectorEffect="non-scaling-stroke" />
+          <g transform={scaleTransform}>
+            <path d={shapeDef.path} fill="none"
+              stroke={customBorder ? (borderColor || palette.accent) : (palette.accent + 'CC')}
+              strokeWidth={customBorder ? (borderPx || 1.6) : 1.6}
+              vectorEffect="non-scaling-stroke" />
+          </g>
         </svg>
       )}
       <div style={{
@@ -740,6 +751,7 @@ export function DesignPanel({
   selectedCardKey, currentShapeForSelected,
   currentBorderForSelected,
   onPickShape, onPickBorderColor, onPickBorderThickness,
+  currentShapeScale = 1, onPickShapeScale,
   userShapes, onOpenShapeExtractor, onDeleteUserShape,
   currentEther, onPickEther, onUploadEther,
 }) {
@@ -832,6 +844,22 @@ export function DesignPanel({
             userShapes={userShapes}
             onOpenExtractor={onOpenShapeExtractor}
             onDeleteUserShape={onDeleteUserShape} />
+          {/* Size slider — tunes the selected card's shape from
+              shrunk-inward (0.5) to enlarged-past-the-card-edge (1.6).
+              Disabled until a card with a non-rect shape is selected. */}
+          <div style={{ marginTop: 10 }}>
+            <SliderRow
+              label="Size"
+              value={currentShapeScale}
+              min={0.5} max={1.6} step={0.05}
+              hint="how big the shape sits relative to the card"
+              onChange={onPickShapeScale}
+              disabled={
+                !selectedCardKey ||
+                !currentShapeForSelected ||
+                currentShapeForSelected === 'rect'
+              } />
+          </div>
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 10 }}>
             <button onClick={onLockShapes} disabled={!shapesDirty} style={{
               fontSize: 10, fontWeight: 600, padding: "5px 11px", borderRadius: 6,
@@ -1827,7 +1855,12 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
 
   const [savedShapes, setSavedShapes] = useStateT(() => loadThreadShapes(thread.id));
   const [shapes, setShapes] = useStateT(savedShapes);
-  const shapesDirty = designMode === 'shape' && JSON.stringify(shapes) !== JSON.stringify(savedShapes);
+  const [savedShapeScales, setSavedShapeScales] = useStateT(() => loadThreadShapeScales(thread.id));
+  const [shapeScales, setShapeScales] = useStateT(savedShapeScales);
+  const shapesDirty = designMode === 'shape' && (
+    JSON.stringify(shapes) !== JSON.stringify(savedShapes) ||
+    JSON.stringify(shapeScales) !== JSON.stringify(savedShapeScales)
+  );
   // Border overrides
   const [savedBorders, setSavedBorders] = useStateT(() => loadThreadBorders(thread.id));
   const [borders, setBorders] = useStateT(savedBorders);
@@ -1843,7 +1876,7 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
   const borderEdit = designMode === 'border';
 
   const enterRearrange = () => { setOverrides(savedOverrides); setSelectedCardKey(null); setDesignMode('rearrange'); };
-  const enterShape     = () => { setShapes(savedShapes);       setSelectedCardKey(null); setDesignMode('shape'); };
+  const enterShape     = () => { setShapes(savedShapes); setShapeScales(savedShapeScales); setSelectedCardKey(null); setDesignMode('shape'); };
   const enterBorder    = () => { setBorders(savedBorders);     setSelectedCardKey(null); setDesignMode('border'); };
   const enterEther     = () => { setEther(savedEther);         setSelectedCardKey(null); setDesignMode('ether'); };
   const exitDesign     = () => {
@@ -1852,11 +1885,16 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
     setSelectedCardKey(null); setDesignMode('off');
   };
   const lockLayout     = () => { saveThreadLayout(thread.id, overrides); setSavedOverrides(overrides); setDesignMode('off'); };
-  const lockShapes     = () => { saveThreadShapes(thread.id, shapes);    setSavedShapes(shapes);       setSelectedCardKey(null); setDesignMode('off'); };
+  const lockShapes     = () => {
+    saveThreadShapes(thread.id, shapes);
+    saveThreadShapeScales(thread.id, shapeScales);
+    setSavedShapes(shapes); setSavedShapeScales(shapeScales);
+    setSelectedCardKey(null); setDesignMode('off');
+  };
   const lockBorders    = () => { saveThreadBorders(thread.id, borders);  setSavedBorders(borders);     setSelectedCardKey(null); setDesignMode('off'); };
   const lockEther      = () => { saveThreadEther(thread.id, ether);      setSavedEther(ether);         setDesignMode('off'); };
   const resetLayout    = () => { setOverrides({}); };
-  const resetShapes    = () => { setShapes({}); setSelectedCardKey(null); };
+  const resetShapes    = () => { setShapes({}); setShapeScales({}); setSelectedCardKey(null); };
   const resetBorders   = () => { setBorders({}); setSelectedCardKey(null); };
   const resetEther     = () => { setEther(null); };
   const setCardPos     = (key, pos) => setOverrides(prev => ({ ...prev, [key]: pos }));
@@ -1865,6 +1903,15 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
     if (!shapeId || shapeId === 'rect') delete next[key]; else next[key] = shapeId;
     return next;
   });
+  const setCardShapeScale = (scale) => {
+    if (!selectedCardKey) return;
+    setShapeScales(prev => {
+      const next = { ...prev };
+      if (Math.abs(scale - 1) < 0.001) delete next[selectedCardKey];
+      else next[selectedCardKey] = scale;
+      return next;
+    });
+  };
   const setCardBorderColor = (color) => {
     if (!selectedCardKey) return;
     setBorders(prev => ({ ...prev, [selectedCardKey]: { ...(prev[selectedCardKey] || {}), color } }));
@@ -2126,6 +2173,8 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
             if (!selectedCardKey) return;
             setCardShape(selectedCardKey, shapeId);
           }}
+          currentShapeScale={selectedCardKey ? (shapeScales[selectedCardKey] ?? 1) : 1}
+          onPickShapeScale={setCardShapeScale}
           onPickBorderColor={setCardBorderColor}
           onPickBorderThickness={setCardBorderThickness}
           userShapes={userShapes}
@@ -2968,6 +3017,7 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
                 editing={layoutEdit} onDragMove={setCardPos}>
                 <FindCard find={F.f} x={F.x} y={F.y} palette={palette}
                   shapeId={shapes[F.key] || 'rect'}
+                  shapeScale={shapeScales[F.key] ?? 1}
                   userShapes={userShapes}
                   borderOverride={borders[F.key] || null}
                   selected={(shapeEdit || borderEdit) && selectedCardKey === F.key}
@@ -2994,6 +3044,7 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
                 editing={layoutEdit} onDragMove={setCardPos}>
                 <NoteCard note={N.n} x={N.x} y={N.y} palette={palette}
                   shapeId={shapes[N.key] || 'rect'}
+                  shapeScale={shapeScales[N.key] ?? 1}
                   userShapes={userShapes}
                   borderOverride={borders[N.key] || null}
                   selected={(shapeEdit || borderEdit) && selectedCardKey === N.key}
