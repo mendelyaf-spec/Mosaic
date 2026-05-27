@@ -1738,7 +1738,12 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
   // View-mode toggle — top-left, mirrors home's chrome
   // Design is available whenever you own the thread (the tools auto-switch
   // to spatial since that's where they have something to act on).
-  const showRearrange = canEdit;
+  // Design tools are available on every thread page — including
+  // kindred threads you entered from a courtyard. All design overrides
+  // (layout, shapes, borders, ether) live in this user's local storage
+  // keyed by thread id, so personalising a kindred thread's view is
+  // private to you and doesn't touch the thread's owner.
+  const showRearrange = true;
   const enterDesign = () => {
     if (threadView !== 'spatial') setThreadView('spatial');
     if (designMode === 'off') enterRearrange();
