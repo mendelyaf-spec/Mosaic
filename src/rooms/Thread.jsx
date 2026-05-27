@@ -246,6 +246,98 @@ function Draggable({ cardKey, x, y, zoom, editing, onDragMove, onDragEnd, childr
   );
 }
 
+// Inline reframes popout — same pattern Home uses on each thread cluster.
+// A small dotted track sits next to a "{n} reframes" label; clicking it
+// expands a stacked list of every mile-marker (age + question), with the
+// current one bolded. Replaces the old MileMarker arc on the spatial
+// canvas so the reframes live with the question they belong to instead
+// of floating as separate cards.
+function ReframesPopout({ mileMarkers, palette, onPick, align = 'center' }) {
+  const [open, setOpen] = useStateT(false);
+  if (!mileMarkers || mileMarkers.length < 2) return null;
+  const total = mileMarkers.length;
+  return (
+    <div style={{
+      marginTop: 12,
+      display: 'flex', flexDirection: 'column',
+      alignItems: align,
+    }}>
+      <div role="button"
+        onClick={(e) => { e.stopPropagation(); setOpen(v => !v); }}
+        title={open ? "Hide reframes" : "See each reframe"}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '3px 6px', borderRadius: 4, cursor: 'pointer',
+          fontFamily: FT, color: '#9A968F',
+        }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+          {mileMarkers.map((_, i) => (
+            <React.Fragment key={i}>
+              <div style={{
+                width: 4, height: 4, borderRadius: '50%',
+                background: i === total - 1 ? palette.accent : palette.accent + '55',
+              }}/>
+              {i < total - 1 && (
+                <div style={{ width: 12, height: 1, background: palette.accent + '33' }}/>
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+        <span style={{
+          fontSize: 8.5, letterSpacing: '.06em', textTransform: 'uppercase',
+          color: open ? palette.accent : '#B0ADA6',
+          fontWeight: open ? 600 : 500, marginLeft: 4,
+        }}>{total} reframes</span>
+        <span style={{
+          fontSize: 8, color: '#B0ADA6',
+          transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
+          transition: 'transform .15s', display: 'inline-block',
+        }}>▸</span>
+      </div>
+
+      {open && (
+        <div onClick={(e) => e.stopPropagation()} style={{
+          marginTop: 8, width: '100%',
+          background: 'rgba(255,255,255,.78)',
+          border: `1px solid ${palette.accent}22`,
+          borderRadius: 6, padding: '10px 14px',
+          textAlign: 'left',
+        }}>
+          {mileMarkers.map((mm, i) => {
+            const isCurrent = i === total - 1;
+            return (
+              <div key={i}
+                onClick={() => onPick && onPick(mm, isCurrent)}
+                style={{
+                  display: 'flex', gap: 8, alignItems: 'flex-start',
+                  cursor: onPick ? 'pointer' : 'default',
+                  paddingBottom: i < total - 1 ? 8 : 0,
+                  marginBottom: i < total - 1 ? 8 : 0,
+                  borderBottom: i < total - 1 ? '1px dashed rgba(26,23,20,.08)' : 'none',
+                }}>
+                <div style={{
+                  width: 6, height: 6, borderRadius: '50%', flexShrink: 0, marginTop: 5,
+                  background: isCurrent ? palette.accent : palette.accent + '55',
+                }}/>
+                <div style={{ flex: 1 }}>
+                  <div style={{
+                    fontSize: 8, letterSpacing: '.06em', textTransform: 'uppercase',
+                    color: '#B0ADA6', fontFamily: FT, marginBottom: 2,
+                  }}>{mm.age}{isCurrent ? ' · current' : ''}</div>
+                  <div style={{
+                    fontFamily: ST, fontStyle: 'italic', fontSize: 13,
+                    color: isCurrent ? '#1A1714' : '#5E5A55', lineHeight: 1.35,
+                  }}>{mm.q}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // One mile-marker pin on the river
 function MileMarker({ mm, x, y, isCurrent, palette, onOpen }) {
   return (
@@ -2324,34 +2416,16 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
               <span style={{ opacity: .4 }}>·</span>
               <span>last reframe {thread.last}</span>
             </div>
+            {/* Reframes popout — replaces the old mile-marker arc. Lives
+                with the question instead of floating as separate cards. */}
+            <ReframesPopout
+              mileMarkers={thread.mileMarkers}
+              palette={palette}
+              onPick={(mm, isCurrent) => {
+                setNoteDraft(null); setSpawnDraft(null); setSavedMsg(null);
+                setActiveCard({ kind: "marker", data: { q: mm.q, age: mm.age, isCurrent } });
+              }} />
           </div>
-
-          {/* Arc-end labels */}
-          {markers.length > 0 && (
-            <>
-              <div data-ui style={{
-                position: "absolute",
-                left: markers[0].x - 60, top: markers[0].y - 30,
-                fontSize: 10, letterSpacing: ".15em", textTransform: "uppercase",
-                color: palette.accent + "AA", fontFamily: MT,
-              }}>← earlier</div>
-              <div data-ui style={{
-                position: "absolute",
-                left: markers[markers.length - 1].x + 20,
-                top: markers[markers.length - 1].y - 30,
-                fontSize: 10, letterSpacing: ".15em", textTransform: "uppercase",
-                color: palette.accent, fontFamily: MT, fontWeight: 600,
-              }}>now →</div>
-            </>
-          )}
-
-          {/* Mile-markers */}
-          {markers.map(m => (
-            <MileMarker key={m.i} mm={m.mm} x={m.x} y={m.y}
-              isCurrent={m.isCurrent} palette={palette}
-              onOpen={() => { setNoteDraft(null); setSpawnDraft(null); setSavedMsg(null);
-                setActiveCard({ kind: "marker", data: { q: m.mm.q, age: m.mm.age, isCurrent: m.isCurrent } }); }} />
-          ))}
 
           {/* Finds — only items that existed by the head's moment in time. */}
           {finds.map((F, i) => (
