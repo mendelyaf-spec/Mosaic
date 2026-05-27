@@ -1266,16 +1266,21 @@ export function PinGlyph() {
   );
 }
 
-function GridView({ thread, onOpenFind, onOpenNote }) {
+function GridView({ thread, headDays = 0, activeQ, onOpenFind, onOpenNote }) {
   const items = [
     ...thread.fl.map(f => ({ kind: 'find', data: f, days: ageToDays(f.d), age: f.d })),
     ...(thread.notesList || []).map(n => ({ kind: 'note', data: n, days: ageToDays(n.d), age: n.d })),
   ];
   // Newest first — smaller days-ago = more recent.
   items.sort((a, b) => a.days - b.days);
-  // Padding-top clears the existing Thread chrome (scrubber at top:8,
-  // header at top:22 max ~80px tall, view toggle / identity card at
-  // top:24). 130px is the right number to start clean.
+  // The scrubber filters the grid to only what existed at the head's
+  // moment. Items NEWER than the head (days < headDays) are hidden:
+  // they hadn't been saved to the thread yet at that point in time.
+  // Use the same 3-day grace window the spatial view uses so dragging
+  // the head slightly past a card doesn't pop it out abruptly.
+  const visible = headDays > 0
+    ? items.filter(it => it.days >= headDays - 3)
+    : items;
   return (
     <div className="tg-root">
       <GridStyleTag />
@@ -1286,12 +1291,18 @@ function GridView({ thread, onOpenFind, onOpenNote }) {
             <span className="sep">·</span>
             <span>pursuing for {thread.age || '—'}</span>
             <span className="sep">·</span>
-            <span>{items.length} cards on the promenade</span>
+            <span>{visible.length}{headDays > 0 ? ` of ${items.length}` : ''} cards on the promenade</span>
+            {headDays > 0 && (
+              <>
+                <span className="sep">·</span>
+                <span style={{ color: '#1A5C46' }}>{daysToLabel(headDays)} view</span>
+              </>
+            )}
           </div>
-          <h1 className="q">{thread.q}</h1>
+          <h1 className="q">{activeQ || thread.q}</h1>
         </div>
         <div className="tg-grid">
-          {items.map((it, idx) => (
+          {visible.map((it, idx) => (
             <GridTile key={idx} item={it}
               onOpen={() => it.kind === 'find' ? onOpenFind(it.data) : onOpenNote(it.data)} />
           ))}
@@ -2229,6 +2240,8 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
       <>
         <GridView
           thread={thread}
+          headDays={headDays}
+          activeQ={activeQ}
           onOpenFind={(find) => { setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "find", data: find }); }}
           onOpenNote={(note) => { setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "note", data: note }); }}
         />
