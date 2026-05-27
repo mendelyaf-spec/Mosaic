@@ -574,12 +574,13 @@ function PanZoomCanvas({
   };
 
   const detail = zoom < 0.6 ? 'compact' : 'full';
-  // translate3d (instead of translate) forces GPU compositing on the
-  // canvas layer. Combined with backfaceVisibility:hidden on the
-  // children container below, this convinces Chrome/Safari to
-  // re-rasterise text at the destination scale rather than bitmap-
-  // scaling the already-rendered glyphs — fixes blurry text at zoom<1.
-  const transform = `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`;
+  // Split pan and zoom across two wrappers: an outer translate (in
+  // screen pixels) for panning, and an inner CSS `zoom` for scaling.
+  // CSS zoom re-rasterises text glyphs at the destination size, so
+  // text stays crisp at any scale. The earlier transform: scale(z)
+  // approach bitmap-scaled the rendered glyphs and made everything
+  // blurry at zoom<1.
+  const panTransform = `translate3d(${pan.x}px, ${pan.y}px, 0)`;
 
   return (
     <div ref={elRef}
@@ -594,13 +595,18 @@ function PanZoomCanvas({
       {showGround && <GroundPattern pan={pan} zoom={zoom} dot={groundDot} />}
       <EdgeIndicators />
       <div style={{
-        position: 'absolute', width: canvasW, height: canvasH,
-        transform, transformOrigin: '0 0', willChange: 'transform',
-        backfaceVisibility: 'hidden',
-        WebkitFontSmoothing: 'antialiased',
-        textRendering: 'geometricPrecision',
+        position: 'absolute', left: 0, top: 0,
+        transform: panTransform, transformOrigin: '0 0',
+        willChange: 'transform',
       }}>
-        {typeof children === 'function' ? children({ zoom, detail, isDragging, dragRef }) : children}
+        <div style={{
+          width: canvasW, height: canvasH, position: 'relative',
+          zoom: zoom,
+          WebkitFontSmoothing: 'antialiased',
+          textRendering: 'geometricPrecision',
+        }}>
+          {typeof children === 'function' ? children({ zoom, detail, isDragging, dragRef }) : children}
+        </div>
       </div>
       {overlay}
       {showZoomControl && <ZoomControl zoom={zoom} onZoom={zoomTo} />}
