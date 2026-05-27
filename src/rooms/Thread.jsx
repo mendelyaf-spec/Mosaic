@@ -86,28 +86,36 @@ const ETHER_PRESETS = [
   { id: 'wayfinding',  label: 'Wayfinding',  coiner: '@asha' },
 ];
 
-// Render the ether for a given preset id at canvas coordinates. The
-// returned element absolutely positions itself across (0,0)→(w,h) and
-// is non-interactive (pointerEvents none). Cards always render above it.
-function EtherLayer({ ether, w, h, accent }) {
+// Render the ether fixed to the viewport, behind the PanZoomCanvas.
+// Patterns and uploaded images both behave as wallpaper — they don't
+// pan or zoom with the canvas, so the chosen background fills the room
+// regardless of where the user has scrolled or zoomed to.
+function EtherLayer({ ether, accent }) {
   if (!ether) return null;
   if (ether.kind === 'image') {
     return (
       <div style={{
-        position: 'absolute', left: 0, top: 0, width: w, height: h,
+        position: 'fixed', inset: 0,
         backgroundImage: `url(${ether.dataUrl})`,
         backgroundSize: 'cover', backgroundPosition: 'center',
-        opacity: 0.35, pointerEvents: 'none',
+        opacity: 0.55, pointerEvents: 'none',
+        zIndex: 0,
       }} />
     );
   }
   const id = ether.value || ether.kind;
-  // SVG patterns rendered at canvas scale.
+  if (id === 'plain') return null;
+  // SVG fills the viewport; viewBox provides a stable coordinate space
+  // for centred shapes like rings and wayfinding.
+  const VB_W = 1000, VB_H = 700;
   const stroke = '#1A1714';
   const fade   = 0.10;
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}
-      style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none' }}>
+    <svg viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="xMidYMid slice"
+      style={{
+        position: 'fixed', inset: 0, width: '100vw', height: '100vh',
+        pointerEvents: 'none', zIndex: 0,
+      }}>
       <defs>
         {id === 'dots' && (
           <pattern id="et-dots" width="40" height="40" patternUnits="userSpaceOnUse">
@@ -130,15 +138,13 @@ function EtherLayer({ ether, w, h, accent }) {
           </pattern>
         )}
       </defs>
-      {id === 'plain' && null}
-      {id === 'dots'       && <rect width={w} height={h} fill="url(#et-dots)"/>}
-      {id === 'lines'      && <rect width={w} height={h} fill="url(#et-lines)"/>}
-      {id === 'grid'       && <rect width={w} height={h} fill="url(#et-grid)"/>}
-      {id === 'crosshatch' && <rect width={w} height={h} fill="url(#et-cross)"/>}
+      {id === 'dots'       && <rect width="100%" height="100%" fill="url(#et-dots)"/>}
+      {id === 'lines'      && <rect width="100%" height="100%" fill="url(#et-lines)"/>}
+      {id === 'grid'       && <rect width="100%" height="100%" fill="url(#et-grid)"/>}
+      {id === 'crosshatch' && <rect width="100%" height="100%" fill="url(#et-cross)"/>}
       {id === 'rings' && (() => {
-        // Concentric circles centered on canvas. ~14 rings, soft.
-        const cxR = w / 2, cyR = h / 2;
-        const step = Math.max(w, h) / 26;
+        const cxR = VB_W / 2, cyR = VB_H / 2;
+        const step = Math.max(VB_W, VB_H) / 26;
         return Array.from({ length: 18 }, (_, i) => (
           <circle key={i} cx={cxR} cy={cyR} r={step * (i + 1)}
             fill="none" stroke={stroke} strokeOpacity={0.08 - i * 0.003}
@@ -146,10 +152,8 @@ function EtherLayer({ ether, w, h, accent }) {
         ));
       })()}
       {id === 'wayfinding' && (() => {
-        // Topographic-ish irregular concentric contours. Built from
-        // mildly perturbed ellipses around the canvas centre.
-        const cxR = w / 2, cyR = h / 2;
-        const step = Math.max(w, h) / 32;
+        const cxR = VB_W / 2, cyR = VB_H / 2;
+        const step = Math.max(VB_W, VB_H) / 32;
         return Array.from({ length: 16 }, (_, i) => {
           const rx = step * (i + 1) * (1 + Math.sin(i * 1.3) * 0.06);
           const ry = step * (i + 1) * (1 + Math.cos(i * 1.1) * 0.06);
@@ -172,7 +176,7 @@ function EtherLayer({ ether, w, h, accent }) {
               <stop offset="100%" stopColor="#1A1714" stopOpacity="0.18"/>
             </radialGradient>
           </defs>
-          <rect width={w} height={h} fill="url(#et-vig)"/>
+          <rect width="100%" height="100%" fill="url(#et-vig)"/>
         </>
       )}
     </svg>
@@ -2218,10 +2222,14 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
   }
 
   // ============ SPATIAL VIEW ============
+  const hasEther = !!ether;
   return (
+    <>
+      <EtherLayer ether={ether} accent={palette.accent} />
     <PZCT
       canvasW={canvasW} canvasH={canvasH}
-      background={palette.soft}
+      background={hasEther ? 'transparent' : palette.soft}
+      showGround={!hasEther}
       groundDot={palette.accent}
       initialPan={initialPan} initialZoom={initialZoom}
       panHint="drag · wheel zoom · the river runs left→right in time"
@@ -2260,8 +2268,6 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
       }>
       {({ zoom }) => (
         <>
-          {/* Ether — the chosen background treatment for this thread */}
-          <EtherLayer ether={ether} w={canvasW} h={canvasH} accent={palette.accent} />
           {/* Soft halo behind the title card — anchors the orbit's center */}
           <div style={{
             position: "absolute", left: cx, top: cy,
@@ -2399,6 +2405,7 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
         </>
       )}
     </PZCT>
+    </>
   );
 }
 
