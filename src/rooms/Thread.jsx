@@ -1022,15 +1022,23 @@ function ShapeLibrary({ palette, disabled, current, onPick }) {
 // Items render at a uniform tile width with the same SVG thumbnails the
 // Promenade uses. Newest first; hover reveals title + meta; click opens
 // the same activeCard overlay the spatial and timeline views use.
-// are.na constants. Numbers picked to match the linked channel:
-//   - 20px side margin from the screen edge
-//   - 20px gap between tiles (both axes)
-//   - 232px column width, tiles uniform per row via auto-fill
-//   - 1px solid #d4d4d4 border, no shadow, no hover lift
-const ARENA_PAD = 20;
-const ARENA_GAP = 20;
-const ARENA_COL = 232;
-const ARENA_BORDER = '#d4d4d4';
+// are.na block-channel constants — picked to match the screenshot:
+//   - white ground (#FFFFFF)
+//   - square tiles via aspectRatio 1/1
+//   - 1px solid #E5E5E5 border, no shadow
+//   - 24px gap between columns, 32px between rows (the extra leaves
+//     room for the title label that sits BELOW each tile, outside the
+//     border)
+//   - 220px minimum column width, growing via auto-fill
+//   - generous 40px side padding
+const ARENA_BG       = '#FFFFFF';
+const ARENA_BORDER   = '#E5E5E5';
+const ARENA_LABEL    = '#3F3F3F';
+const ARENA_LABEL_X  = '#9A968F';
+const ARENA_PAD_X    = 40;
+const ARENA_GAP_X    = 24;
+const ARENA_GAP_Y    = 32;
+const ARENA_COL_MIN  = 220;
 
 function GridView({ thread, palette, chrome, onOpenFind, onOpenNote }) {
   const items = [
@@ -1041,7 +1049,7 @@ function GridView({ thread, palette, chrome, onOpenFind, onOpenNote }) {
   items.sort((a, b) => a.days - b.days);
   return (
     <div style={{
-      position: "fixed", inset: 0, background: "#FBFAF6",
+      position: "fixed", inset: 0, background: ARENA_BG,
       overflowY: "auto",
     }}>
       {chrome.header}
@@ -1052,17 +1060,14 @@ function GridView({ thread, palette, chrome, onOpenFind, onOpenNote }) {
       {chrome.cardOverlay}
       <div style={{
         paddingTop: 170,
-        paddingLeft: ARENA_PAD, paddingRight: ARENA_PAD,
-        paddingBottom: ARENA_PAD,
+        paddingLeft: ARENA_PAD_X, paddingRight: ARENA_PAD_X,
+        paddingBottom: 48,
       }}>
         <div style={{
-          fontFamily: FT, fontSize: 11, letterSpacing: '.16em',
-          textTransform: 'uppercase', color: '#9A968F', marginBottom: ARENA_PAD,
-        }}>{items.length} items · chronological · newest first</div>
-        <div style={{
           display: "grid",
-          gridTemplateColumns: `repeat(auto-fill, minmax(${ARENA_COL}px, 1fr))`,
-          gap: ARENA_GAP,
+          gridTemplateColumns: `repeat(auto-fill, minmax(${ARENA_COL_MIN}px, 1fr))`,
+          columnGap: ARENA_GAP_X,
+          rowGap: ARENA_GAP_Y,
         }}>
           {items.map((it, idx) => (
             <GridTile key={idx} item={it} palette={palette}
@@ -1074,12 +1079,9 @@ function GridView({ thread, palette, chrome, onOpenFind, onOpenNote }) {
   );
 }
 
-function GridTile({ item, palette, onOpen }) {
+function GridTile({ item, onOpen }) {
   const isFind = item.kind === 'find';
   const titleText = isFind ? item.data.t : item.data.cap;
-  const sourceText = isFind
-    ? (item.data.s || '')
-    : (item.data.type === 'audio' ? 'audio note' : item.data.type === 'image' ? 'image note' : 'written note');
   const media = isFind
     ? deriveFindMedia({
         id: item.data.id || `f-${titleText}-${item.age}`,
@@ -1090,58 +1092,70 @@ function GridTile({ item, palette, onOpen }) {
         noteType: item.data.type, glyph: '', title: titleText, dur: item.data.dur,
       });
   return (
-    <div onClick={onOpen}
-      style={{
-        position: 'relative', cursor: 'pointer',
-        background: '#FFFFFF',
-        border: `1px solid ${ARENA_BORDER}`,
-        overflow: 'hidden',
-      }}>
-      {media
-        ? <Thumbnail media={media} kind={item.kind} width={ARENA_COL} />
-        : <GridQuoteBand text={titleText} />}
-      {/* Bottom strip — always visible, restrained */}
-      <div style={{
-        padding: '10px 12px',
-        fontFamily: FT, fontSize: 11.5, lineHeight: 1.35, color: '#3A3530',
-        borderTop: `1px solid ${ARENA_BORDER}`,
-        display: 'flex', flexDirection: 'column', gap: 3,
-      }}>
-        <div style={{
-          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-          overflow: 'hidden', textOverflow: 'ellipsis',
-          fontFamily: ST, fontSize: 13, color: '#1A1714',
-        }}>{titleText}</div>
-        <div style={{
-          fontFamily: MT, fontSize: 9.5, color: '#9A968F',
-          letterSpacing: '.04em',
-          display: 'flex', justifyContent: 'space-between', gap: 8,
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {/* The bordered tile — square, content fills entirely */}
+      <div onClick={onOpen}
+        style={{
+          position: 'relative', cursor: 'pointer',
+          aspectRatio: '1 / 1',
+          background: '#FFFFFF',
+          border: `1px solid ${ARENA_BORDER}`,
+          overflow: 'hidden',
         }}>
-          <span style={{
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
-          }}>{sourceText}</span>
-          <span style={{ flexShrink: 0, color: palette.accent + 'AA' }}>{item.age}</span>
-        </div>
+        {media
+          ? <Thumbnail media={media} kind={item.kind} width={ARENA_COL_MIN} height={ARENA_COL_MIN} fill />
+          : <TextTile text={titleText} />}
+      </div>
+      {/* Title label BELOW the tile, outside the border */}
+      <div style={{
+        marginTop: 10, fontFamily: FT, fontSize: 12,
+        color: ARENA_LABEL, lineHeight: 1.35,
+        display: 'flex', alignItems: 'flex-start', gap: 5,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>
+        <span style={{ color: ARENA_LABEL_X, fontSize: 10, lineHeight: '14px' }}>·</span>
+        <span style={{
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          textDecoration: 'underline', textDecorationColor: ARENA_BORDER,
+          textUnderlineOffset: 3,
+        }}>{titleText}</span>
       </div>
     </div>
   );
 }
 
-function GridQuoteBand({ text }) {
+// Text-only tile content — for notes without media. Bold heading at top,
+// body paragraph below, gradient fade at the bottom for truncation.
+function TextTile({ text }) {
+  // Treat the first sentence (up to ~110 chars) as a heading; rest as
+  // body. If the caption is short, the heading carries it.
+  let heading = text || '';
+  let body = '';
+  const m = (text || '').match(/^([^.!?]+[.!?])\s+(.+)$/s);
+  if (m && m[1].length < 110) { heading = m[1]; body = m[2]; }
   return (
     <div style={{
-      width: '100%', aspectRatio: '16 / 9',
-      background: 'linear-gradient(135deg, #f0ead8 0%, #e6dec8 100%)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '14px 18px',
+      position: 'absolute', inset: 0,
+      padding: '18px 18px 22px',
+      display: 'flex', flexDirection: 'column', gap: 10,
+      overflow: 'hidden',
     }}>
       <div style={{
-        fontFamily: ST, fontStyle: 'italic',
-        fontSize: 14, lineHeight: 1.35, color: '#4a453c',
-        textAlign: 'center', textWrap: 'pretty', maxWidth: '92%',
-        display: '-webkit-box', WebkitLineClamp: 4,
-        WebkitBoxOrient: 'vertical', overflow: 'hidden',
-      }}>&ldquo;{text}&rdquo;</div>
+        fontFamily: FT, fontSize: 14.5, lineHeight: 1.32,
+        color: '#1A1714', fontWeight: 600,
+      }}>{heading}</div>
+      {body && (
+        <div style={{
+          fontFamily: FT, fontSize: 13, lineHeight: 1.4,
+          color: '#3F3F3F', flex: 1, overflow: 'hidden',
+        }}>{body}</div>
+      )}
+      {/* Bottom gradient fade — matches are.na's truncation treatment */}
+      <div style={{
+        position: 'absolute', left: 0, right: 0, bottom: 0, height: 40,
+        background: 'linear-gradient(to bottom, rgba(255,255,255,0), #FFFFFF)',
+        pointerEvents: 'none',
+      }}/>
     </div>
   );
 }

@@ -8,20 +8,29 @@
 const SERIF = "'Cormorant Garamond', 'Iowan Old Style', Georgia, serif";
 const MONO  = "'JetBrains Mono', ui-monospace, Menlo, monospace";
 
-export function Thumbnail({ media, kind, width = 268 }) {
+export function Thumbnail({ media, kind, width = 268, height = null, fill = false }) {
   if (!media) return null;
-  const h = Math.round(width * 9 / 16);
+  // Reference dimensions for the SVG viewBox.
+  const refW = typeof width  === 'number' ? width  : 268;
+  const refH = typeof height === 'number' ? height : Math.round(refW * 9 / 16);
+  // When fill=true, the thumbnail scales to its container (used by the
+  // are.na-style Grid tiles, where the cell drives the size). Otherwise
+  // it renders at the explicit pixel dimensions (the Promenade canvas).
+  const cssW = fill ? '100%' : refW;
+  const cssH = fill ? '100%' : refH;
 
   return (
     <div style={{
-      width, height: h,
+      width: cssW, height: cssH,
       display: 'block',
       borderRadius: 2,
       overflow: 'hidden',
       background: `hsl(${media.hue ?? 30}, 20%, 22%)`,
       position: 'relative',
     }} aria-hidden>
-      <svg viewBox={`0 0 ${width} ${h}`} width={width} height={h} style={{ display:'block' }}>
+      <svg viewBox={`0 0 ${refW} ${refH}`} width="100%" height="100%"
+        preserveAspectRatio={fill ? 'xMidYMid slice' : 'none'}
+        style={{ display:'block' }}>
         {media.kind === 'photo'      && <PhotoScene w={width} h={h} hue={media.hue} scene={media.scene} />}
         {media.kind === 'drawing'    && <DrawingScene w={width} h={h} hue={media.hue} />}
         {media.kind === 'book'       && <BookCover w={width} h={h} hue={media.hue} title={media.title} author={media.author} spine={media.spine} />}
