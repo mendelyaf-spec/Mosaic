@@ -586,7 +586,10 @@ function TimelineScrubber({ markers, oldestDays, onScrub, label = "thread time" 
   const draggingRef = useRef(false);
 
   const setFromX = (clientX) => {
-    const r = trackRef.current.getBoundingClientRect();
+    const el = trackRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0) return;
     const t = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
     // left = oldest, right = now
     const days = Math.round(span * (1 - t));
@@ -594,21 +597,24 @@ function TimelineScrubber({ markers, oldestDays, onScrub, label = "thread time" 
     onScrub && onScrub(days);
   };
 
-  const onDown = (e) => {
-    draggingRef.current = true;
-    setFromX(e.clientX);
+  // Pointer events + pointer capture: the track keeps receiving events
+  // even when the cursor moves outside it (e.g. over the grid body),
+  // which the previous window-mousemove approach was missing on the
+  // grid view.
+  const onPointerDown = (e) => {
     e.preventDefault();
+    draggingRef.current = true;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setFromX(e.clientX);
   };
-  useEffect(() => {
-    const onMove = (e) => { if (draggingRef.current) setFromX(e.clientX); };
-    const onUp   = () => { draggingRef.current = false; };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup",   onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup",   onUp);
-    };
-  }, [span]);
+  const onPointerMove = (e) => {
+    if (!draggingRef.current) return;
+    setFromX(e.clientX);
+  };
+  const onPointerUp = (e) => {
+    draggingRef.current = false;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+  };
 
   const headT = 1 - (head / span);   // 0..1 across the track
 
@@ -634,12 +640,18 @@ function TimelineScrubber({ markers, oldestDays, onScrub, label = "thread time" 
         <span style={{ color: "#1A1714", fontWeight: 500 }}>{daysToLabel(head)}</span>
       </div>
       {/* row 2: the track */}
-      <div ref={trackRef} onMouseDown={onDown} style={{
-        position: "relative",
-        height: 38,
-        cursor: "ew-resize",
-        userSelect: "none",
-      }}>
+      <div ref={trackRef}
+           onPointerDown={onPointerDown}
+           onPointerMove={onPointerMove}
+           onPointerUp={onPointerUp}
+           onPointerCancel={onPointerUp}
+           style={{
+             position: "relative",
+             height: 38,
+             cursor: "ew-resize",
+             userSelect: "none",
+             touchAction: "none",
+           }}>
         {/* baseline */}
         <div style={{
           position: "absolute", left: 0, right: 0, top: 18, height: 1,
