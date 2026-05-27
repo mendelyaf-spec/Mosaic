@@ -14,7 +14,72 @@ import {
   FONT_MONO as MT,
 } from '../shell/shell.jsx';
 import { WM } from '../data/wm-data.js';
-import { isOwnThread, setFindNote, addFindToThread, spawnThreadFromCard, getAllThreads } from '../lib/threads.js';
+import {
+  isOwnThread, setFindNote, addFindToThread, spawnThreadFromCard, getAllThreads,
+  loadThreadLayout, saveThreadLayout, clearThreadLayout,
+} from '../lib/threads.js';
+
+// Stable key for an item's saved position. Finds carry an id when they
+// came from a DOS session; seeded finds fall back to title+source+date.
+// Notes use caption+date.
+function fingerprintKey(s) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return (h >>> 0).toString(36);
+}
+function findKey(f) {
+  return f.id || ('f-' + fingerprintKey((f.t || '') + '|' + (f.s || '') + '|' + (f.d || '')));
+}
+function noteKey(n) {
+  return 'n-' + fingerprintKey((n.cap || '') + '|' + (n.d || ''));
+}
+
+// Wrapper for cards in the Thread spatial view. Out of edit mode it's a
+// pass-through. In edit mode it intercepts pointer drag, converts screen
+// deltas to canvas coords using the live zoom, and suppresses the
+// underlying card's click so dragging never opens an overlay.
+function Draggable({ cardKey, x, y, zoom, editing, onDragMove, onDragEnd, children }) {
+  const dragRef = useRef(null);
+  const onPointerDown = (e) => {
+    if (!editing) return;
+    e.stopPropagation();
+    e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: x, oy: y, moved: 0 };
+  };
+  const onPointerMove = (e) => {
+    if (!editing || !dragRef.current) return;
+    const dx = (e.clientX - dragRef.current.sx) / Math.max(0.0001, zoom);
+    const dy = (e.clientY - dragRef.current.sy) / Math.max(0.0001, zoom);
+    dragRef.current.moved = Math.max(dragRef.current.moved, Math.hypot(dx, dy));
+    onDragMove(cardKey, { x: dragRef.current.ox + dx, y: dragRef.current.oy + dy });
+  };
+  const finish = (e) => {
+    if (!editing || !dragRef.current) return;
+    const moved = dragRef.current.moved;
+    dragRef.current = null;
+    if (moved > 4) {
+      // Swallow the click the browser is about to synthesize.
+      e.stopPropagation();
+      e.preventDefault();
+      onDragEnd && onDragEnd(cardKey);
+    }
+  };
+  // In edit mode, swallow click outright so cards don't open while
+  // rearranging.
+  const onClickCapture = (e) => { if (editing) { e.stopPropagation(); e.preventDefault(); } };
+  return (
+    <div
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={finish}
+      onPointerCancel={finish}
+      onClickCapture={onClickCapture}
+      style={editing ? { cursor: 'grab', touchAction: 'none' } : undefined}>
+      {children}
+    </div>
+  );
+}
 
 // One mile-marker pin on the river
 function MileMarker({ mm, x, y, isCurrent, palette, onOpen }) {
@@ -336,6 +401,19 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
   const canEdit = isOwnThread(thread.id); // can't annotate someone else's thread
   const myThreads = getAllThreads().filter(t => isOwnThread(t.id));
 
+  // Card-position overrides for the spatial view. In edit mode the owner
+  // drags cards to test placements; "lock" persists them, "reset" wipes
+  // them, "cancel" reverts to the last saved set. Stored per thread id.
+  const [layoutEdit, setLayoutEdit] = useStateT(false);
+  const [savedOverrides, setSavedOverrides] = useStateT(() => loadThreadLayout(thread.id));
+  const [overrides, setOverrides] = useStateT(savedOverrides);
+  const dirty = layoutEdit && JSON.stringify(overrides) !== JSON.stringify(savedOverrides);
+  const enterEdit = () => { setOverrides(savedOverrides); setLayoutEdit(true); };
+  const cancelEdit = () => { setOverrides(savedOverrides); setLayoutEdit(false); };
+  const lockLayout = () => { saveThreadLayout(thread.id, overrides); setSavedOverrides(overrides); setLayoutEdit(false); };
+  const resetLayout = () => { setOverrides({}); };
+  const setCardPos = (key, pos) => setOverrides(prev => ({ ...prev, [key]: pos }));
+
   // When rendered as an in-place expansion on Home (onClose provided), Esc
   // collapses back to the constellation instead of leaving the page.
   useEffect(() => {
@@ -385,30 +463,32 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
 
   // Finds scatter on the OUTER ring, upper half (so they sit further from
   // the title than the markers but on roughly the same hemisphere).
+  // Any saved override (key → {x,y}) wins over the orbital default.
   const finds = thread.fl.map((f, i) => {
     const t = (i + 0.5) / Math.max(1, thread.fl.length);
-    // Spread across upper 240° arc, with a small wobble
     const baseTheta = Math.PI + 0.2 + t * (Math.PI * 2 - 0.4 - Math.PI);
     const theta = baseTheta + ((i % 3) - 1) * 0.08;
-    // Outward-only radial wobble so a find never pulls inward toward the
-    // mile-marker arc (that collision hid markers behind the find card).
     const r = rOuter + (i % 3) * 36;
+    const key = findKey(f);
+    const ov = overrides[key];
     return {
-      f, days: ageToDays(f.d),
-      x: cx + Math.cos(theta) * r,
-      y: cy + Math.sin(theta) * r,
+      f, key, days: ageToDays(f.d),
+      x: ov ? ov.x : cx + Math.cos(theta) * r,
+      y: ov ? ov.y : cy + Math.sin(theta) * r,
     };
   });
 
   // Notes in the LOWER half, also on the outer ring.
   const notes = (thread.notesList || []).map((n, i) => {
     const t = (i + 0.5) / Math.max(1, (thread.notesList || []).length);
-    const theta = 0.25 + t * (Math.PI - 0.5);   // sweep right→left along bottom
+    const theta = 0.25 + t * (Math.PI - 0.5);
     const r = rOuter + (i % 2) * 50 - 20;
+    const key = noteKey(n);
+    const ov = overrides[key];
     return {
-      n, days: ageToDays(n.d),
-      x: cx + Math.cos(theta) * r,
-      y: cy + Math.sin(theta) * r,
+      n, key, days: ageToDays(n.d),
+      x: ov ? ov.x : cx + Math.cos(theta) * r,
+      y: ov ? ov.y : cy + Math.sin(theta) * r,
     };
   });
 
@@ -503,6 +583,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
   );
 
   // View-mode toggle — top-left, mirrors home's chrome
+  const showRearrange = canEdit && threadView === 'spatial';
   const viewToggle = (
     <div data-ui style={{
       position: "fixed", top: 24, left: 24, zIndex: 21,
@@ -527,6 +608,51 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
           }}>{m.l}</button>
         ))}
       </div>
+      {showRearrange && !layoutEdit && (
+        <button onClick={enterEdit} style={{
+          marginTop: 6, fontSize: 9.5, fontWeight: 500, padding: "4px 10px",
+          borderRadius: 9, cursor: "pointer", fontFamily: FT,
+          border: `1px solid ${palette.accent}66`,
+          background: "rgba(255,255,255,.85)", color: palette.accent,
+        }} title="Drag cards to reposition them, then lock the layout">
+          Rearrange cards
+        </button>
+      )}
+      {showRearrange && layoutEdit && (
+        <div style={{
+          marginTop: 6, display: "flex", flexDirection: "column", gap: 4,
+          background: "rgba(255,255,255,.92)",
+          border: `1px solid ${palette.accent}55`,
+          borderRadius: 8, padding: "8px 10px",
+          boxShadow: "0 6px 18px rgba(40,30,15,.10)",
+        }}>
+          <div style={{
+            fontSize: 8.5, letterSpacing: ".1em", textTransform: "uppercase",
+            color: palette.accent, fontFamily: FT, fontWeight: 600, marginBottom: 2,
+          }}>Rearranging · drag any card</div>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            <button onClick={lockLayout} disabled={!dirty} style={{
+              fontSize: 10, fontWeight: 600, padding: "4px 10px", borderRadius: 6,
+              cursor: dirty ? "pointer" : "default", fontFamily: FT,
+              border: "none",
+              background: dirty ? palette.accent : "rgba(26,23,20,.08)",
+              color: dirty ? "#FAF5E9" : "#9A968F",
+            }}>Lock in place</button>
+            <button onClick={resetLayout} style={{
+              fontSize: 10, padding: "4px 10px", borderRadius: 6,
+              cursor: "pointer", fontFamily: FT,
+              border: `1px solid ${palette.accent}33`,
+              background: "transparent", color: "#5E5A55",
+            }} title="Restore the default orbital layout">Reset</button>
+            <button onClick={cancelEdit} style={{
+              fontSize: 10, padding: "4px 10px", borderRadius: 6,
+              cursor: "pointer", fontFamily: FT,
+              border: "1px solid rgba(26,23,20,.12)",
+              background: "transparent", color: "#7A756F",
+            }}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -1273,24 +1399,38 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
           {/* Finds — only items that existed by the head's moment in time. */}
           {finds.map((F, i) => (
             <div key={"fw" + i} style={{
-              opacity: F.days < headDays - 3 ? 0.12 : 1,
+              opacity: layoutEdit ? 1 : (F.days < headDays - 3 ? 0.12 : 1),
               transition: "opacity .25s ease",
+              outline: layoutEdit ? `1.5px dashed ${palette.accent}77` : 'none',
+              outlineOffset: layoutEdit ? 4 : 0,
+              borderRadius: 8,
             }}>
-              <FindCard find={F.f} x={F.x} y={F.y} palette={palette}
-                onOpen={() => { setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "find", data: F.f }); }}
-                onShared={() => navigate("courtyard", { id: thread.id })} />
+              <Draggable cardKey={F.key} x={F.x} y={F.y} zoom={zoom}
+                editing={layoutEdit} onDragMove={setCardPos}>
+                <FindCard find={F.f} x={F.x} y={F.y} palette={palette}
+                  onOpen={() => { if (layoutEdit) return;
+                    setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "find", data: F.f }); }}
+                  onShared={() => navigate("courtyard", { id: thread.id })} />
+              </Draggable>
             </div>
           ))}
 
           {/* Notes */}
           {notes.map((N, i) => (
             <div key={"nw" + i} style={{
-              opacity: N.days < headDays - 3 ? 0.12 : 1,
+              opacity: layoutEdit ? 1 : (N.days < headDays - 3 ? 0.12 : 1),
               transition: "opacity .25s ease",
+              outline: layoutEdit ? `1.5px dashed ${palette.accent}77` : 'none',
+              outlineOffset: layoutEdit ? 4 : 0,
+              borderRadius: 8,
             }}>
-              <NoteCard note={N.n} x={N.x} y={N.y} palette={palette}
-                onOpen={() => { setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "note", data: N.n }); }}
-                onShared={() => navigate("courtyard", { id: thread.id })} />
+              <Draggable cardKey={N.key} x={N.x} y={N.y} zoom={zoom}
+                editing={layoutEdit} onDragMove={setCardPos}>
+                <NoteCard note={N.n} x={N.x} y={N.y} palette={palette}
+                  onOpen={() => { if (layoutEdit) return;
+                    setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "note", data: N.n }); }}
+                  onShared={() => navigate("courtyard", { id: thread.id })} />
+              </Draggable>
             </div>
           ))}
 

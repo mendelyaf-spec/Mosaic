@@ -11,6 +11,7 @@ import { WM } from '../data/wm-data.js';
 
 const THREADS_KEY = 'mosaic.threads';
 const HIDDEN_KEY  = 'mosaic.hiddenThreads';
+const LAYOUT_KEY  = 'mosaic.threadLayouts.v1';
 
 export function loadUserThreads() {
   return readStored(THREADS_KEY, []);
@@ -45,6 +46,31 @@ export function restoreThread(id) {
   if (!hidden.includes(id)) return false;
   writeStored(HIDDEN_KEY, hidden.filter(h => h !== id));
   return true;
+}
+
+// Per-thread card-position overrides for the Thread spatial view. Maya
+// can rearrange her cards in edit mode and lock them; the result is
+// stored as { [cardKey]: { x, y } } in canvas coordinates. Anything
+// without an override falls back to the orbital default at render time.
+export function loadThreadLayout(threadId) {
+  if (!threadId) return {};
+  const all = readStored(LAYOUT_KEY, {});
+  return all[threadId] || {};
+}
+
+export function saveThreadLayout(threadId, layout) {
+  if (!threadId) return;
+  const all = readStored(LAYOUT_KEY, {});
+  all[threadId] = layout || {};
+  writeStored(LAYOUT_KEY, all);
+}
+
+export function clearThreadLayout(threadId) {
+  if (!threadId) return;
+  const all = readStored(LAYOUT_KEY, {});
+  if (!(threadId in all)) return;
+  delete all[threadId];
+  writeStored(LAYOUT_KEY, all);
 }
 
 export function saveThread(thread) {
