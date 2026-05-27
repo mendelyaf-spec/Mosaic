@@ -1207,7 +1207,6 @@ function GridStyleTag() {
 
 function GridViewToggle({ current, onSwitch }) {
   const opts = [
-    { id: 'spatial',  l: 'flow',     glyph: <FlowDotsGlyph active={current === 'spatial'}/> },
     { id: 'timeline', l: 'timeline', glyph: <TimelineGlyph active={current === 'timeline'}/> },
     { id: 'grid',     l: 'grid',     glyph: <GridGlyph    active={current === 'grid'}/> },
   ];
@@ -1223,17 +1222,6 @@ function GridViewToggle({ current, onSwitch }) {
   );
 }
 
-function FlowDotsGlyph({ active }) {
-  const c = active ? '#fff' : '#555';
-  return (
-    <svg width="10" height="10" viewBox="0 0 10 10">
-      <circle cx="2" cy="2.5" r="1.1" fill={c}/>
-      <circle cx="6.5" cy="3.5" r="1.1" fill={c}/>
-      <circle cx="3.5" cy="6.5" r="1.1" fill={c}/>
-      <circle cx="8" cy="7.5" r="1.1" fill={c}/>
-    </svg>
-  );
-}
 function TimelineGlyph({ active }) {
   const c = active ? '#fff' : '#555';
   return (
