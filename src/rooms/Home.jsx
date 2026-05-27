@@ -19,9 +19,10 @@ import {
   loadHomeShapeScales, saveHomeShapeScales,
   loadHomeBorders, saveHomeBorders,
   loadHomeEther, saveHomeEther,
+  loadUserShapes, saveUserShape, deleteUserShape,
 } from '../lib/threads.js';
 import {
-  DesignPanel, EtherLayer, SHAPE_DEFS,
+  DesignPanel, EtherLayer, SHAPE_DEFS, ShapeExtractor,
   GridStyleTag, TextTileBody, PinGlyph,
 } from './Thread.jsx';
 
@@ -481,6 +482,11 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
   const [homeBordersEdit,  setHomeBordersEdit]  = useStateH(savedHomeBorders);
   const [savedHomeEther,   setSavedHomeEther]   = useStateH(() => loadHomeEther());
   const [homeEtherEdit,    setHomeEtherEdit]    = useStateH(savedHomeEther);
+  // User-extracted shapes — same library the Thread page populates,
+  // shared via mosaic.userShapes.v1.
+  const [userShapes, setUserShapes] = useStateH(() => loadUserShapes());
+  const [extractorOpen, setExtractorOpen] = useStateH(false);
+  const refreshUserShapes = () => setUserShapes(loadUserShapes());
   const [selectedClusterId, setSelectedClusterId] = useStateH(null);
   const [canvasZoom, setCanvasZoom] = useStateH(ZOOM_DEFAULT);
   const layoutDirty  = designMode === 'rearrange' && JSON.stringify(homeLayoutEdit)  !== JSON.stringify(savedHomeLayout);
@@ -1177,12 +1183,27 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
         onPickShape={(s) => selectedClusterId && setClusterShape(selectedClusterId, s)}
         currentShapeScale={selectedClusterId ? (homeShapeScalesEdit[selectedClusterId] ?? 1) : 1}
         onPickShapeScale={setClusterShapeScale}
+        userShapes={userShapes}
+        onOpenShapeExtractor={() => setExtractorOpen(true)}
+        onDeleteUserShape={(id) => { deleteUserShape(id); refreshUserShapes(); }}
         onPickBorderColor={setClusterBorderColor}
         onPickBorderThickness={setClusterBorderThickness}
         currentEther={homeEtherEdit}
         onPickEther={(e) => setHomeEtherEdit(e)}
         onUploadEther={(e) => setHomeEtherEdit(e)} />
     </div>
+  );
+  const extractorModal = (
+    <ShapeExtractor
+      open={extractorOpen}
+      palette={{ accent: '#1A5C46', bg: '#FAF5E9' }}
+      onClose={() => setExtractorOpen(false)}
+      onSaved={(shape) => {
+        const saved = saveUserShape(shape);
+        refreshUserShapes();
+        if (selectedClusterId) setClusterShape(selectedClusterId, saved.id);
+      }}
+    />
   );
   return (
     <>
@@ -1201,6 +1222,7 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
           {apertures.map((a, i) => <ApertureH key={i} {...a} />)}
           {breadcrumb}
           {designPanel}
+          {extractorModal}
         </>
       }>
       {({ zoom: zz }) => (

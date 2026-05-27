@@ -1117,7 +1117,7 @@ function EtherTilePreview({ id, accent }) {
 // Douglas-Peucker). The slider tunes the bg-removal aggressiveness,
 // live-previews the extracted silhouette, and writes a new entry into
 // mosaic.userShapes.v1 on save.
-function ShapeExtractor({ open, palette, onClose, onSaved }) {
+export function ShapeExtractor({ open, palette, onClose, onSaved }) {
   const [imageData, setImageData] = useStateT(null);
   const [threshold, setThreshold] = useStateT(60);
   const [epsilon, setEpsilon] = useStateT(1.5);
