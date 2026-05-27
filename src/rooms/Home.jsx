@@ -13,7 +13,6 @@ import {
 } from '../shell/shell.jsx';
 import { WM } from '../data/wm-data.js';
 import { getAllThreads, getThreadById, deleteThread } from '../lib/threads.js';
-import { ThreadRoom } from './Thread.jsx';
 
 function ThreadCluster({ thread, pos, onOpen, onDelete, centerAnchor = false }) {
   const pal = WM.DOMAIN[thread.dc];
@@ -252,28 +251,10 @@ function ThreadCluster({ thread, pos, onOpen, onDelete, centerAnchor = false }) 
   );
 }
 
-// In-place thread expansion. The clicked thread's mind map (the real Thread
-// room) grows in while the Home constellation behind it recedes. No route
-// change — collapse via the breadcrumb "Home", the ✕, or Esc.
-function ThreadExpansion({ thread, navigate, onClose }) {
-  const [shown, setShown] = useStateH(false);
-  React.useEffect(() => {
-    const r = requestAnimationFrame(() => setShown(true));
-    return () => cancelAnimationFrame(r);
-  }, []);
-  if (!thread) return null;
-  return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 80,
-      opacity: shown ? 1 : 0,
-      transform: shown ? "scale(1)" : "scale(0.94)",
-      transformOrigin: "center center",
-      transition: "opacity .34s ease, transform .34s ease",
-    }}>
-      <ThreadRoom thread={thread} navigate={navigate} onClose={onClose} />
-    </div>
-  );
-}
+// (Thread used to expand in place on top of Home; now it's its own
+// page at #room=thread&id=<id>, so the constellation never sits faintly
+// behind a focused thread.)
+
 
 function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStage, openerMode }) {
   // version bumps on delete so getAllThreads() re-runs against fresh storage
@@ -284,17 +265,12 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
   const [viewMode, setViewMode] = useStateH("spatial"); // "spatial" | "timeline"
   const [schedulerOpen, setSchedulerOpen] = useStateH(false);
 
-  // Clicking a thread expands its mind map in place — the constellation
-  // recedes behind it — instead of routing to the Thread page.
-  const [expandedThreadId, setExpandedThreadId] = useStateH(null);
-  const openThread = (id) => setExpandedThreadId(id);
-  const collapseThread = () => setExpandedThreadId(null);
-  const expandedThread = expandedThreadId
-    ? (getThreadById(expandedThreadId) || threads.find(t => t.id === expandedThreadId) || null)
-    : null;
+  // Clicking a thread routes to its own page. Each thread lives at
+  // #room=thread&id=<id> so it's deep-linkable and Home recedes
+  // entirely behind it (rather than peeking through faintly).
+  const openThread = (id) => navigate('thread', { id });
 
   const handleDelete = (thread) => {
-    if (expandedThreadId === thread.id) setExpandedThreadId(null);
     deleteThread(thread.id);
     setVersion(v => v + 1);
   };
@@ -878,9 +854,6 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
             Hollow circles = finds and notes you collected. Click a thread question to enter.
           </div>
         </div>
-        {expandedThread && (
-          <ThreadExpansion thread={expandedThread} navigate={navigate} onClose={collapseThread} />
-        )}
       </div>
     );
   }
@@ -1024,9 +997,6 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
         </>
       )}
     </PZCH>
-    {expandedThread && (
-      <ThreadExpansion thread={expandedThread} navigate={navigate} onClose={collapseThread} />
-    )}
     </>
   );
 }
