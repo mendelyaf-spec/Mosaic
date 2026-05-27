@@ -1797,10 +1797,17 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
     </div>
   );
 
+  // Courtyard aperture only when there's actually a courtyard: a
+  // courtyardName AND at least one kindred thread. Solo "courtyards of
+  // one" (user-spawned threads without invited members) don't get the
+  // door — there's nothing to enter.
+  const hasCourtyard = !!thread.courtyardName && (thread.kindred?.length || 0) > 0;
   const apertures = [
-    { position: "right", label: "Courtyard",
-      hint: `→ §04 · the ${thread.courtyardName || "thread"} courtyard`,
-      onActivate: () => navigate("courtyard", { id: thread.id }) },
+    ...(hasCourtyard ? [{
+      position: "right", label: "Courtyard",
+      hint: `→ §04 · the ${thread.courtyardName} courtyard`,
+      onActivate: () => navigate("courtyard", { id: thread.id }),
+    }] : []),
     { position: "left", label: "DOS",
       hint: "side door · §03 · take a question down",
       onActivate: () => navigate("search", { from: thread.id }) },

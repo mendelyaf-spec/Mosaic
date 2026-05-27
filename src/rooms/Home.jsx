@@ -825,7 +825,7 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
   // that actually have a courtyard (the seeded ones; user-created threads
   // carry courtyardName: null until shared). "new" counts come from
   // COURTYARD.incoming keyed by threadId.
-  const courtyardThreads = threads.filter(t => t.courtyardName);
+  const courtyardThreads = threads.filter(t => t.courtyardName && (t.kindred?.length || 0) > 0);
   const incoming = WM.COURTYARD?.incoming || [];
   const newFor = (tid) => incoming.filter(r => r.threadId === tid).length;
   const totalNew = courtyardThreads.reduce((n, t) => n + newFor(t.id), 0);
