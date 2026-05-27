@@ -579,11 +579,20 @@ function TimelineScrubber({ markers, oldestDays, onScrub, label = "thread time" 
   const enriched = markers.map((m, i) => ({
     ...m, idx: i, days: ageToDays(m.age),
   }));
-  // span runs from oldest mile-marker → 0 (now)
-  const span = Math.max(oldestDays, ...enriched.map(m => m.days), 1);
+  const rawSpan = Math.max(oldestDays, ...enriched.map(m => m.days));
+  // Span runs from oldest mile-marker → 0 (now). Clamp to ≥1 so the
+  // math below doesn't divide by zero even when we end up not
+  // rendering.
+  const span = Math.max(rawSpan, 1);
   const [head, setHead] = useStateT(0); // days-ago at the head (0 = now)
   const trackRef = useRef(null);
   const draggingRef = useRef(false);
+  // If everything reads as "just now" — typical for user-created
+  // threads straight out of a DOS session, where every find and
+  // mile-marker carries age 'just now' — there's no real range to
+  // scrub through. Hide the scrubber entirely rather than rendering a
+  // collapsed control that only resolves to two endpoints.
+  const meaningfulRange = rawSpan >= 2;
 
   const setFromX = (clientX) => {
     const el = trackRef.current;
@@ -617,6 +626,8 @@ function TimelineScrubber({ markers, oldestDays, onScrub, label = "thread time" 
   };
 
   const headT = 1 - (head / span);   // 0..1 across the track
+
+  if (!meaningfulRange) return null;
 
   return (
     <div data-ui style={{
