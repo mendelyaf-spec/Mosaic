@@ -2559,18 +2559,33 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
             pointerEvents: "none",
           }} />
 
-          {/* Title card at canvas center — the question the orbit gathers around */}
-          <div data-card style={{
-            position: "absolute", left: cx, top: cy,
-            transform: "translate(-50%,-50%)",
-            width: 460, padding: "22px 28px",
-            background: palette.bg,
-            border: `1.5px solid ${palette.accent}55`,
-            borderRadius: 10,
-            boxShadow: `0 18px 50px ${palette.accent}26, 0 2px 10px rgba(26,23,20,.06)`,
-            textAlign: "center",
-            zIndex: 3,
-          }}>
+          {/* Title card at canvas center — the question the orbit gathers around.
+              Clicking it opens the same marker overlay the reframes popout uses,
+              so the central question carries the same affordances every other
+              card does (spawn off it; on your own thread the textual context). */}
+          <div data-card
+            onClick={() => {
+              setNoteDraft(null); setSpawnDraft(null); setSavedMsg(null);
+              setActiveCard({
+                kind: "marker",
+                data: { q: activeQ, age: activeAge, isCurrent: isHeadAtNow },
+              });
+            }}
+            style={{
+              position: "absolute", left: cx, top: cy,
+              transform: "translate(-50%,-50%)",
+              width: 460, padding: "22px 28px",
+              background: palette.bg,
+              border: `1.5px solid ${palette.accent}55`,
+              borderRadius: 10,
+              boxShadow: `0 18px 50px ${palette.accent}26, 0 2px 10px rgba(26,23,20,.06)`,
+              textAlign: "center",
+              zIndex: 3,
+              cursor: "pointer",
+              transition: "box-shadow .2s, transform .2s",
+            }}
+            onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 22px 60px ${palette.accent}33, 0 2px 10px rgba(26,23,20,.08)`; }}
+            onMouseLeave={e => { e.currentTarget.style.boxShadow = `0 18px 50px ${palette.accent}26, 0 2px 10px rgba(26,23,20,.06)`; }}>
             <div style={{
               fontFamily: MT, fontSize: 10, letterSpacing: ".15em",
               textTransform: "uppercase", color: palette.accent, marginBottom: 8,
