@@ -16,8 +16,38 @@ import {
 import { WM } from '../data/wm-data.js';
 import {
   isOwnThread, setFindNote, addFindToThread, spawnThreadFromCard, getAllThreads,
-  loadThreadLayout, saveThreadLayout, clearThreadLayout,
+  loadThreadLayout, saveThreadLayout,
+  loadThreadShapes, saveThreadShapes,
 } from '../lib/threads.js';
+
+// ── Shape library — atomic shapes that wrap a card ────────────────
+// Each entry is an SVG path drawn in a 100×100 viewBox. preserveAspectRatio
+// is set to 'none' so the path stretches to whatever rectangle the card
+// occupies — a hex on a wide card reads as a wide hex. 'rect' is the
+// default (no overlay).
+const SHAPE_DEFS = {
+  rect:    { label: 'Rectangle', coiner: null, path: null },
+  circle:  { label: 'Circle',    coiner: null, path: 'M50 2 a48 48 0 1 0 0 96 a48 48 0 1 0 0 -96 Z' },
+  hex:     { label: 'Hexagon',   coiner: null, path: 'M50 4 L92 27 L92 73 L50 96 L8 73 L8 27 Z' },
+  'soft-hex': { label: 'Soft hex', coiner: null,
+                path: 'M50 4 Q70 4 90 27 Q92 50 90 73 Q70 96 50 96 Q30 96 10 73 Q8 50 10 27 Q30 4 50 4 Z' },
+  oval:    { label: 'Oval',      coiner: null, path: 'M50 12 a44 38 0 1 0 0 76 a44 38 0 1 0 0 -76 Z' },
+  square:  { label: 'Soft square', coiner: null, path: 'M14 4 L86 4 Q96 4 96 14 L96 86 Q96 96 86 96 L14 96 Q4 96 4 86 L4 14 Q4 4 14 4 Z' },
+  triangle:{ label: 'Triangle',  coiner: null, path: 'M50 4 L94 92 L6 92 Z' },
+  diamond: { label: 'Diamond',   coiner: null, path: 'M50 4 L96 50 L50 96 L4 50 Z' },
+  // Community-coined
+  octagon: { label: 'Octagon',   coiner: '@asha',
+             path: 'M30 4 L70 4 L96 30 L96 70 L70 96 L30 96 L4 70 L4 30 Z' },
+  rosette: { label: 'Rosette',   coiner: '@samira',
+             // 8-petal rosette built from sinusoidal radius — pre-baked path.
+             path: 'M50 6 Q60 16 50 26 Q60 36 70 36 Q80 46 70 56 Q80 66 70 76 Q60 86 50 76 Q40 86 30 76 Q20 66 30 56 Q20 46 30 36 Q40 36 50 26 Q40 16 50 6 Z' },
+  knot:    { label: 'Knot',      coiner: '@ezra',
+             // Trefoil-ish overlapping loops, drawn as a stylised path.
+             path: 'M50 8 C70 8 88 22 84 50 C80 78 60 92 50 92 C40 92 20 78 16 50 C12 22 30 8 50 8 M30 36 Q50 50 70 36 M30 64 Q50 50 70 64' },
+};
+const STARTER_SHAPES   = ['rect','circle','hex','soft-hex','oval','square','triangle','diamond'];
+const COMMUNITY_SHAPES = ['octagon','rosette','knot'];
+
 
 // Stable key for an item's saved position. Finds carry an id when they
 // came from a DOS session; seeded finds fall back to title+source+date.
@@ -122,21 +152,40 @@ function MileMarker({ mm, x, y, isCurrent, palette, onOpen }) {
   );
 }
 
-function FindCard({ find, x, y, palette, onOpen, onShared }) {
+function FindCard({ find, x, y, palette, onOpen, onShared, shapeId = 'rect', selected = false }) {
   const shared = !!find.sharedWith;
+  const shaped = shapeId && shapeId !== 'rect';
   return (
     <div data-card onClick={onOpen} style={{
       position: "absolute", left: x, top: y,
       width: 240, cursor: "pointer",
-      background: "#FFFFFF",
-      border: shared ? `1.5px solid ${palette.accent}88` : "1px solid rgba(26,23,20,.08)",
+      background: shaped ? "transparent" : "#FFFFFF",
+      border: shaped
+        ? "1px solid transparent"
+        : (shared ? `1.5px solid ${palette.accent}88` : "1px solid rgba(26,23,20,.08)"),
       borderRadius: 6,
       padding: "10px 12px",
-      boxShadow: shared ? `0 4px 14px ${palette.accent}22, 0 2px 10px rgba(26,23,20,.05)` : "0 2px 10px rgba(26,23,20,.05)",
+      boxShadow: shaped ? "none"
+        : (shared ? `0 4px 14px ${palette.accent}22, 0 2px 10px rgba(26,23,20,.05)` : "0 2px 10px rgba(26,23,20,.05)"),
       transition: "box-shadow .2s, transform .2s",
+      outline: selected ? `2px solid ${palette.accent}` : 'none',
+      outlineOffset: selected ? 6 : 0,
     }}
-    onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 6px 22px rgba(26,23,20,.1)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
-    onMouseLeave={e => { e.currentTarget.style.boxShadow = shared ? `0 4px 14px ${palette.accent}22, 0 2px 10px rgba(26,23,20,.05)` : "0 2px 10px rgba(26,23,20,.05)"; e.currentTarget.style.transform = "translateY(0)"; }}>
+    onMouseEnter={e => { if (!shaped) { e.currentTarget.style.boxShadow = "0 6px 22px rgba(26,23,20,.1)"; e.currentTarget.style.transform = "translateY(-2px)"; } }}
+    onMouseLeave={e => { if (!shaped) { e.currentTarget.style.boxShadow = shared ? `0 4px 14px ${palette.accent}22, 0 2px 10px rgba(26,23,20,.05)` : "0 2px 10px rgba(26,23,20,.05)"; e.currentTarget.style.transform = "translateY(0)"; } }}>
+      {shaped && (
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none"
+          style={{
+            position: 'absolute', left: 0, top: 0,
+            width: '100%', height: '100%',
+            pointerEvents: 'none', overflow: 'visible',
+          }}>
+          <path d={SHAPE_DEFS[shapeId].path} fill="none"
+            stroke={palette.accent + 'CC'}
+            strokeWidth={1.6}
+            vectorEffect="non-scaling-stroke" />
+        </svg>
+      )}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
         <span style={{ fontSize: 14, opacity: .6, marginTop: 1 }}>{find.i}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -177,20 +226,36 @@ function FindCard({ find, x, y, palette, onOpen, onShared }) {
   );
 }
 
-function NoteCard({ note, x, y, palette, onOpen, onShared }) {
+function NoteCard({ note, x, y, palette, onOpen, onShared, shapeId = 'rect', selected = false }) {
   const icon = note.type === "audio" ? "\ud83c\udf99" : note.type === "image" ? "\ud83d\udcf8" : "\u270e";
   const shared = !!note.sharedWith;
+  const shaped = shapeId && shapeId !== 'rect';
   return (
     <div data-card onClick={onOpen} style={{
       position: "absolute", left: x, top: y,
       width: 220, cursor: "pointer",
-      background: palette.card,
-      border: `1px solid ${palette.accent}33`,
+      background: shaped ? "transparent" : palette.card,
+      border: shaped ? "1px solid transparent" : `1px solid ${palette.accent}33`,
       borderRadius: 6,
       padding: "10px 12px",
-      transform: "rotate(-1deg)",
-      boxShadow: "0 2px 10px rgba(26,23,20,.06)",
+      transform: shaped ? "none" : "rotate(-1deg)",
+      boxShadow: shaped ? "none" : "0 2px 10px rgba(26,23,20,.06)",
+      outline: selected ? `2px solid ${palette.accent}` : 'none',
+      outlineOffset: selected ? 6 : 0,
     }}>
+      {shaped && (
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none"
+          style={{
+            position: 'absolute', left: 0, top: 0,
+            width: '100%', height: '100%',
+            pointerEvents: 'none', overflow: 'visible',
+          }}>
+          <path d={SHAPE_DEFS[shapeId].path} fill="none"
+            stroke={palette.accent + 'CC'}
+            strokeWidth={1.6}
+            vectorEffect="non-scaling-stroke" />
+        </svg>
+      )}
       <div style={{
         fontSize: 9.5, letterSpacing: ".08em", textTransform: "uppercase",
         color: palette.accent, fontFamily: MT, marginBottom: 4,
@@ -384,6 +449,192 @@ function TimelineScrubber({ markers, oldestDays, onScrub, label = "thread time" 
   );
 }
 
+// Design panel — unified surface for the two design tools (Rearrange and
+// Shape). Sits in the top-left chrome below the View Mode toggle.
+function DesignPanel({
+  mode, onSwitch, palette,
+  layoutDirty, shapesDirty,
+  onLockLayout, onLockShapes,
+  onResetLayout, onResetShapes,
+  onExit,
+  selectedCardKey, currentShapeForSelected, onPickShape,
+}) {
+  const tabBtn = (id, label) => {
+    const active = mode === id;
+    return (
+      <button key={id} onClick={() => onSwitch(id)} style={{
+        flex: 1, padding: "5px 9px", borderRadius: 6,
+        cursor: active ? "default" : "pointer", fontFamily: FT,
+        fontSize: 10, fontWeight: active ? 600 : 500, letterSpacing: ".04em",
+        border: "none",
+        background: active ? palette.accent : "transparent",
+        color: active ? "#FAF5E9" : "#5E5A55",
+      }}>{label}</button>
+    );
+  };
+
+  return (
+    <div data-ui style={{
+      marginTop: 6, width: 244,
+      background: "rgba(255,255,255,.96)",
+      border: `1px solid ${palette.accent}55`,
+      borderRadius: 8, padding: "10px 11px 12px",
+      boxShadow: "0 12px 30px rgba(40,30,15,.14)",
+    }}>
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        marginBottom: 8,
+      }}>
+        <span style={{
+          fontSize: 8.5, letterSpacing: ".14em", textTransform: "uppercase",
+          color: palette.accent, fontFamily: FT, fontWeight: 700,
+        }}>✦ Design</span>
+        <button onClick={onExit} title="Close design panel" style={{
+          background: "transparent", border: "none",
+          color: "#9A968F", cursor: "pointer", padding: 2,
+          fontFamily: FT, fontSize: 11,
+        }}>✕</button>
+      </div>
+
+      <div style={{
+        display: "flex", gap: 3, padding: 2,
+        background: "rgba(26,23,20,.04)", borderRadius: 8, marginBottom: 9,
+      }}>
+        {tabBtn("rearrange", "Rearrange")}
+        {tabBtn("shape", "Shape")}
+      </div>
+
+      {mode === "rearrange" && (
+        <>
+          <p style={{
+            margin: "0 0 8px", fontSize: 10.5, lineHeight: 1.4,
+            color: "#5E5A55", fontFamily: FT,
+          }}>Drag any card to move it. Lock when the layout feels right.</p>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+            <button onClick={onLockLayout} disabled={!layoutDirty} style={{
+              fontSize: 10, fontWeight: 600, padding: "5px 11px", borderRadius: 6,
+              cursor: layoutDirty ? "pointer" : "default", fontFamily: FT,
+              border: "none",
+              background: layoutDirty ? palette.accent : "rgba(26,23,20,.08)",
+              color: layoutDirty ? "#FAF5E9" : "#9A968F",
+            }}>Lock in place</button>
+            <button onClick={onResetLayout} style={{
+              fontSize: 10, padding: "5px 11px", borderRadius: 6,
+              cursor: "pointer", fontFamily: FT,
+              border: `1px solid ${palette.accent}33`,
+              background: "transparent", color: "#5E5A55",
+            }} title="Restore the default orbital layout">Reset</button>
+          </div>
+        </>
+      )}
+
+      {mode === "shape" && (
+        <>
+          <p style={{
+            margin: "0 0 8px", fontSize: 10.5, lineHeight: 1.4,
+            color: "#5E5A55", fontFamily: FT,
+          }}>
+            {selectedCardKey
+              ? "Pick a shape for the selected card."
+              : "Click a card to select it, then pick a shape."}
+          </p>
+          <ShapeLibrary
+            palette={palette}
+            disabled={!selectedCardKey}
+            current={currentShapeForSelected}
+            onPick={onPickShape} />
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 10 }}>
+            <button onClick={onLockShapes} disabled={!shapesDirty} style={{
+              fontSize: 10, fontWeight: 600, padding: "5px 11px", borderRadius: 6,
+              cursor: shapesDirty ? "pointer" : "default", fontFamily: FT,
+              border: "none",
+              background: shapesDirty ? palette.accent : "rgba(26,23,20,.08)",
+              color: shapesDirty ? "#FAF5E9" : "#9A968F",
+            }}>Lock shapes</button>
+            <button onClick={onResetShapes} style={{
+              fontSize: 10, padding: "5px 11px", borderRadius: 6,
+              cursor: "pointer", fontFamily: FT,
+              border: `1px solid ${palette.accent}33`,
+              background: "transparent", color: "#5E5A55",
+            }} title="Restore the default rectangular shape for all cards">Reset all</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Mini visual catalogue from the shape library. Renders 7 starter shapes
+// + 3 community-coined, plus an inert "draw your own / import" tile that
+// reads as a coming-soon affordance.
+function ShapeLibrary({ palette, disabled, current, onPick }) {
+  const TileGrid = ({ ids, dim }) => (
+    <div style={{
+      display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6,
+      opacity: dim ? 0.5 : 1, pointerEvents: dim ? "none" : "auto",
+    }}>
+      {ids.map(id => {
+        const isCurrent = current === id;
+        const def = SHAPE_DEFS[id];
+        return (
+          <button key={id} onClick={() => onPick(id)} title={def.label + (def.coiner ? ` · ${def.coiner}` : '')} style={{
+            position: "relative", height: 44, padding: 0,
+            background: isCurrent ? palette.bg : "#FFFFFF",
+            border: `1px solid ${isCurrent ? palette.accent : 'rgba(26,23,20,.10)'}`,
+            borderRadius: 4, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {id === 'rect' ? (
+              <div style={{
+                width: 28, height: 20, border: `1.5px solid ${isCurrent ? palette.accent : '#5E5A55'}`,
+                borderRadius: 2,
+              }} />
+            ) : (
+              <svg viewBox="0 0 100 100" width={28} height={28} style={{ display: 'block' }}>
+                <path d={def.path} fill="none"
+                  stroke={isCurrent ? palette.accent : '#5E5A55'}
+                  strokeWidth={4}
+                  strokeLinejoin="round" strokeLinecap="round" />
+              </svg>
+            )}
+            {def.coiner && (
+              <span style={{
+                position: 'absolute', bottom: 2, right: 4,
+                fontFamily: MT, fontSize: 7.5, color: '#B0ADA6',
+              }}>{def.coiner.replace('@','')}</span>
+            )}
+          </button>
+        );
+      })}
+      {/* Draw your own — coming-soon tile */}
+      <button onClick={() => alert('Draw / import — coming soon.')} title="Draw your own or import"
+        style={{
+          height: 44, padding: 0, cursor: "pointer",
+          background: "transparent",
+          border: `1px dashed rgba(26,23,20,.20)`,
+          borderRadius: 4, color: "#9A968F",
+          fontFamily: FT, fontSize: 8.5, lineHeight: 1.2,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          textAlign: "center", padding: "2px 4px",
+        }}>+ draw<br/>or import</button>
+    </div>
+  );
+  return (
+    <div>
+      <div style={{
+        fontSize: 8.5, letterSpacing: ".08em", textTransform: "uppercase",
+        color: "#9A968F", fontFamily: FT, marginBottom: 4,
+      }}>starter</div>
+      <TileGrid ids={STARTER_SHAPES} dim={disabled} />
+      <div style={{
+        fontSize: 8.5, letterSpacing: ".08em", textTransform: "uppercase",
+        color: "#9A968F", fontFamily: FT, marginTop: 9, marginBottom: 4,
+      }}>community</div>
+      <TileGrid ids={COMMUNITY_SHAPES} dim={disabled} />
+    </div>
+  );
+}
+
 function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null }) {
   const palette = WM.DOMAIN[thread.dc];
   const canvasW = 3200, canvasH = 2000;
@@ -401,18 +652,37 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
   const canEdit = isOwnThread(thread.id); // can't annotate someone else's thread
   const myThreads = getAllThreads().filter(t => isOwnThread(t.id));
 
-  // Card-position overrides for the spatial view. In edit mode the owner
-  // drags cards to test placements; "lock" persists them, "reset" wipes
-  // them, "cancel" reverts to the last saved set. Stored per thread id.
-  const [layoutEdit, setLayoutEdit] = useStateT(false);
+  // ── Design mode ────────────────────────────────────────────────
+  // The owner can enter "design" mode to edit either card POSITIONS
+  // (rearrange) or card SHAPES. The two are mutually exclusive within
+  // a single Design panel so card clicks always have one clear meaning.
+  // designMode: 'off' | 'rearrange' | 'shape'
+  const [designMode, setDesignMode] = useStateT('off');
+  // Position overrides
   const [savedOverrides, setSavedOverrides] = useStateT(() => loadThreadLayout(thread.id));
   const [overrides, setOverrides] = useStateT(savedOverrides);
-  const dirty = layoutEdit && JSON.stringify(overrides) !== JSON.stringify(savedOverrides);
-  const enterEdit = () => { setOverrides(savedOverrides); setLayoutEdit(true); };
-  const cancelEdit = () => { setOverrides(savedOverrides); setLayoutEdit(false); };
-  const lockLayout = () => { saveThreadLayout(thread.id, overrides); setSavedOverrides(overrides); setLayoutEdit(false); };
-  const resetLayout = () => { setOverrides({}); };
-  const setCardPos = (key, pos) => setOverrides(prev => ({ ...prev, [key]: pos }));
+  const layoutDirty = designMode === 'rearrange' && JSON.stringify(overrides) !== JSON.stringify(savedOverrides);
+  // Shape overrides
+  const [savedShapes, setSavedShapes] = useStateT(() => loadThreadShapes(thread.id));
+  const [shapes, setShapes] = useStateT(savedShapes);
+  const shapesDirty = designMode === 'shape' && JSON.stringify(shapes) !== JSON.stringify(savedShapes);
+  const [selectedCardKey, setSelectedCardKey] = useStateT(null);
+  const layoutEdit = designMode === 'rearrange';
+  const shapeEdit  = designMode === 'shape';
+
+  const enterRearrange = () => { setOverrides(savedOverrides); setSelectedCardKey(null); setDesignMode('rearrange'); };
+  const enterShape     = () => { setShapes(savedShapes); setSelectedCardKey(null); setDesignMode('shape'); };
+  const exitDesign     = () => { setOverrides(savedOverrides); setShapes(savedShapes); setSelectedCardKey(null); setDesignMode('off'); };
+  const lockLayout     = () => { saveThreadLayout(thread.id, overrides); setSavedOverrides(overrides); setDesignMode('off'); };
+  const lockShapes     = () => { saveThreadShapes(thread.id, shapes); setSavedShapes(shapes); setSelectedCardKey(null); setDesignMode('off'); };
+  const resetLayout    = () => { setOverrides({}); };
+  const resetShapes    = () => { setShapes({}); setSelectedCardKey(null); };
+  const setCardPos     = (key, pos) => setOverrides(prev => ({ ...prev, [key]: pos }));
+  const setCardShape   = (key, shapeId) => setShapes(prev => {
+    const next = { ...prev };
+    if (!shapeId || shapeId === 'rect') delete next[key]; else next[key] = shapeId;
+    return next;
+  });
 
   // When rendered as an in-place expansion on Home (onClose provided), Esc
   // collapses back to the constellation instead of leaving the page.
@@ -608,50 +878,40 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
           }}>{m.l}</button>
         ))}
       </div>
-      {showRearrange && !layoutEdit && (
-        <button onClick={enterEdit} style={{
+      {showRearrange && designMode === 'off' && (
+        <button onClick={enterRearrange} style={{
           marginTop: 6, fontSize: 9.5, fontWeight: 500, padding: "4px 10px",
           borderRadius: 9, cursor: "pointer", fontFamily: FT,
           border: `1px solid ${palette.accent}66`,
           background: "rgba(255,255,255,.85)", color: palette.accent,
-        }} title="Drag cards to reposition them, then lock the layout">
-          Rearrange cards
+        }} title="Open the design toolbar — rearrange cards and pick shapes">
+          ✦ Design
         </button>
       )}
-      {showRearrange && layoutEdit && (
-        <div style={{
-          marginTop: 6, display: "flex", flexDirection: "column", gap: 4,
-          background: "rgba(255,255,255,.92)",
-          border: `1px solid ${palette.accent}55`,
-          borderRadius: 8, padding: "8px 10px",
-          boxShadow: "0 6px 18px rgba(40,30,15,.10)",
-        }}>
-          <div style={{
-            fontSize: 8.5, letterSpacing: ".1em", textTransform: "uppercase",
-            color: palette.accent, fontFamily: FT, fontWeight: 600, marginBottom: 2,
-          }}>Rearranging · drag any card</div>
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-            <button onClick={lockLayout} disabled={!dirty} style={{
-              fontSize: 10, fontWeight: 600, padding: "4px 10px", borderRadius: 6,
-              cursor: dirty ? "pointer" : "default", fontFamily: FT,
-              border: "none",
-              background: dirty ? palette.accent : "rgba(26,23,20,.08)",
-              color: dirty ? "#FAF5E9" : "#9A968F",
-            }}>Lock in place</button>
-            <button onClick={resetLayout} style={{
-              fontSize: 10, padding: "4px 10px", borderRadius: 6,
-              cursor: "pointer", fontFamily: FT,
-              border: `1px solid ${palette.accent}33`,
-              background: "transparent", color: "#5E5A55",
-            }} title="Restore the default orbital layout">Reset</button>
-            <button onClick={cancelEdit} style={{
-              fontSize: 10, padding: "4px 10px", borderRadius: 6,
-              cursor: "pointer", fontFamily: FT,
-              border: "1px solid rgba(26,23,20,.12)",
-              background: "transparent", color: "#7A756F",
-            }}>Cancel</button>
-          </div>
-        </div>
+      {showRearrange && designMode !== 'off' && (
+        <DesignPanel
+          mode={designMode}
+          onSwitch={(next) => {
+            // Switching between rearrange ↔ shape resets any unsaved
+            // edits in the previous mode (you'd lose them anyway on
+            // exit). Cancel-on-switch keeps the model simple.
+            if (next === 'rearrange') enterRearrange();
+            else if (next === 'shape') enterShape();
+          }}
+          palette={palette}
+          layoutDirty={layoutDirty}
+          shapesDirty={shapesDirty}
+          onLockLayout={lockLayout}
+          onLockShapes={lockShapes}
+          onResetLayout={resetLayout}
+          onResetShapes={resetShapes}
+          onExit={exitDesign}
+          selectedCardKey={selectedCardKey}
+          currentShapeForSelected={selectedCardKey ? (shapes[selectedCardKey] || 'rect') : null}
+          onPickShape={(shapeId) => {
+            if (!selectedCardKey) return;
+            setCardShape(selectedCardKey, shapeId);
+          }} />
       )}
     </div>
   );
@@ -1399,7 +1659,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
           {/* Finds — only items that existed by the head's moment in time. */}
           {finds.map((F, i) => (
             <div key={"fw" + i} style={{
-              opacity: layoutEdit ? 1 : (F.days < headDays - 3 ? 0.12 : 1),
+              opacity: (layoutEdit || shapeEdit) ? 1 : (F.days < headDays - 3 ? 0.12 : 1),
               transition: "opacity .25s ease",
               outline: layoutEdit ? `1.5px dashed ${palette.accent}77` : 'none',
               outlineOffset: layoutEdit ? 4 : 0,
@@ -1408,8 +1668,13 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
               <Draggable cardKey={F.key} x={F.x} y={F.y} zoom={zoom}
                 editing={layoutEdit} onDragMove={setCardPos}>
                 <FindCard find={F.f} x={F.x} y={F.y} palette={palette}
-                  onOpen={() => { if (layoutEdit) return;
-                    setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "find", data: F.f }); }}
+                  shapeId={shapes[F.key] || 'rect'}
+                  selected={shapeEdit && selectedCardKey === F.key}
+                  onOpen={() => {
+                    if (layoutEdit) return;
+                    if (shapeEdit) { setSelectedCardKey(F.key); return; }
+                    setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "find", data: F.f });
+                  }}
                   onShared={() => navigate("courtyard", { id: thread.id })} />
               </Draggable>
             </div>
@@ -1418,7 +1683,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
           {/* Notes */}
           {notes.map((N, i) => (
             <div key={"nw" + i} style={{
-              opacity: layoutEdit ? 1 : (N.days < headDays - 3 ? 0.12 : 1),
+              opacity: (layoutEdit || shapeEdit) ? 1 : (N.days < headDays - 3 ? 0.12 : 1),
               transition: "opacity .25s ease",
               outline: layoutEdit ? `1.5px dashed ${palette.accent}77` : 'none',
               outlineOffset: layoutEdit ? 4 : 0,
@@ -1427,8 +1692,13 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
               <Draggable cardKey={N.key} x={N.x} y={N.y} zoom={zoom}
                 editing={layoutEdit} onDragMove={setCardPos}>
                 <NoteCard note={N.n} x={N.x} y={N.y} palette={palette}
-                  onOpen={() => { if (layoutEdit) return;
-                    setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "note", data: N.n }); }}
+                  shapeId={shapes[N.key] || 'rect'}
+                  selected={shapeEdit && selectedCardKey === N.key}
+                  onOpen={() => {
+                    if (layoutEdit) return;
+                    if (shapeEdit) { setSelectedCardKey(N.key); return; }
+                    setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "note", data: N.n });
+                  }}
                   onShared={() => navigate("courtyard", { id: thread.id })} />
               </Draggable>
             </div>

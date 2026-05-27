@@ -12,6 +12,7 @@ import { WM } from '../data/wm-data.js';
 const THREADS_KEY = 'mosaic.threads';
 const HIDDEN_KEY  = 'mosaic.hiddenThreads';
 const LAYOUT_KEY  = 'mosaic.threadLayouts.v1';
+const SHAPES_KEY  = 'mosaic.threadShapes.v1';
 
 export function loadUserThreads() {
   return readStored(THREADS_KEY, []);
@@ -71,6 +72,24 @@ export function clearThreadLayout(threadId) {
   if (!(threadId in all)) return;
   delete all[threadId];
   writeStored(LAYOUT_KEY, all);
+}
+
+// Per-thread card-shape overrides. Maps cardKey → shapeId (see
+// SHAPE_DEFS in Thread.jsx). Missing entries render as the default
+// rectangular card. Shape ids include the 7 starter shapes
+// (rect, circle, hex, soft-hex, square, triangle, diamond) and the
+// 3 community-coined (octagon · @asha, rosette · @samira, knot · @ezra).
+export function loadThreadShapes(threadId) {
+  if (!threadId) return {};
+  const all = readStored(SHAPES_KEY, {});
+  return all[threadId] || {};
+}
+
+export function saveThreadShapes(threadId, shapes) {
+  if (!threadId) return;
+  const all = readStored(SHAPES_KEY, {});
+  all[threadId] = shapes || {};
+  writeStored(SHAPES_KEY, all);
 }
 
 export function saveThread(thread) {
