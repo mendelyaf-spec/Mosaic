@@ -1110,29 +1110,164 @@ export function ShapeLibrary({ palette, disabled, current, onPick }) {
   );
 }
 
-// Grid view — chronological masonry inspired by an are.na block channel.
-// Items render at a uniform tile width with the same SVG thumbnails the
-// Promenade uses. Newest first; hover reveals title + meta; click opens
-// the same activeCard overlay the spatial and timeline views use.
-// are.na block-channel constants — picked to match the screenshot:
-//   - white ground (#FFFFFF)
-//   - square tiles via aspectRatio 1/1
-//   - 1px solid #E5E5E5 border, no shadow
-//   - 24px gap between columns, 32px between rows (the extra leaves
-//     room for the title label that sits BELOW each tile, outside the
-//     border)
-//   - 220px minimum column width, growing via auto-fill
-//   - generous 40px side padding
-const ARENA_BG       = '#FFFFFF';
-const ARENA_BORDER   = '#E5E5E5';
-const ARENA_LABEL    = '#3F3F3F';
-const ARENA_LABEL_X  = '#9A968F';
-const ARENA_PAD_X    = 40;
-const ARENA_GAP_X    = 24;
-const ARENA_GAP_Y    = 32;
-const ARENA_COL_MIN  = 220;
+// Grid view — implements the design handoff in /tmp/ts_design.
+// Sticky white chrome at top (back-to-promenade · ON {OWNER}'S THREAD ·
+// view toggle), thread header (meta + question), then a responsive grid
+// of square uniform tiles. Text tiles show title + body fading; image-
+// kind tiles (photo/drawing) show a striped placeholder + silhouette +
+// mono tag. Each tile has a muted-teal caption beneath with a pin
+// glyph and the title.
+const GRID_FONT_SANS = "'Inter', system-ui, sans-serif";
+const GRID_FONT_SERIF = "'Fraunces', Georgia, serif";
+const GRID_FONT_MONO = "'JetBrains Mono', ui-monospace, monospace";
 
-function GridView({ thread, palette, chrome, onOpenFind, onOpenNote }) {
+function GridStyleTag() {
+  return (
+    <style>{`
+      .tg-root { position: fixed; inset: 0; background: #fff; overflow: auto;
+        font-family: ${GRID_FONT_SANS}; color: #1a1a1a; }
+      .tg-chrome { position: sticky; top: 0; z-index: 10;
+        background: rgba(255,255,255,0.96); backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border-bottom: 1px solid #e6e6e6;
+        padding: 11px 22px;
+        display: flex; align-items: center; gap: 14px;
+        font-family: ${GRID_FONT_MONO}; font-size: 11px; color: #8a8a8a; letter-spacing: 0.04em; }
+      .tg-chrome > .left { flex: 0 0 auto; }
+      .tg-chrome > .center { flex: 1 1 auto; min-width: 0; text-align: center; }
+      .tg-chrome > .right { flex: 0 0 auto; }
+      .tg-back { background: none; border: none; cursor: pointer;
+        font-family: ${GRID_FONT_MONO}; font-size: 11px; color: #555;
+        letter-spacing: 0.04em; padding: 0; }
+      .tg-back:hover { color: #111; }
+      .tg-center-label { text-transform: uppercase; }
+      .tg-vt { display: inline-flex; border: 1px solid #e6e6e6; background: #fff; }
+      .tg-vt button { background: none; border: none; cursor: pointer;
+        padding: 6px 11px; font-family: ${GRID_FONT_MONO};
+        font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+        color: #555; display: inline-flex; align-items: center; gap: 6px;
+        border-right: 1px solid #e6e6e6; }
+      .tg-vt button:last-child { border-right: none; }
+      .tg-vt button.on { background: #111; color: #fff; }
+
+      .tg-pad { max-width: 1480px; margin: 0 auto; padding: 36px 22px 120px; }
+      .tg-thead { margin-bottom: 44px; max-width: 760px; }
+      .tg-thead .meta { font-family: ${GRID_FONT_MONO}; font-size: 11px;
+        color: #8a8a8a; letter-spacing: 0.06em; margin-bottom: 14px;
+        display: flex; gap: 14px; flex-wrap: wrap; }
+      .tg-thead .meta .sep { color: #ccc; }
+      .tg-thead .q { font-family: ${GRID_FONT_SERIF}; font-weight: 400;
+        font-size: 30px; line-height: 1.18; margin: 0; color: #111;
+        text-wrap: pretty; letter-spacing: -0.01em; }
+
+      .tg-grid { display: grid; grid-template-columns: repeat(5, 1fr);
+        column-gap: 16px; row-gap: 36px; }
+      @media (max-width: 1280px) { .tg-grid { grid-template-columns: repeat(4, 1fr); } }
+      @media (max-width: 980px)  { .tg-grid { grid-template-columns: repeat(3, 1fr); } }
+      @media (max-width: 700px)  { .tg-grid { grid-template-columns: repeat(2, 1fr); } }
+      @media (max-width: 460px)  { .tg-grid { grid-template-columns: 1fr; } }
+
+      .tg-cell { display: flex; flex-direction: column; min-width: 0; cursor: pointer; }
+      .tg-tile { background: #fff; border: 1px solid #e6e6e6;
+        aspect-ratio: 1 / 1; position: relative; overflow: hidden;
+        transition: border-color 180ms ease, box-shadow 180ms ease; }
+      .tg-cell:hover .tg-tile { border-color: #b8b8b8;
+        box-shadow: 0 1px 0 0 rgba(0,0,0,0.02); }
+
+      .tg-text { position: absolute; inset: 0; padding: 18px 18px 0;
+        display: flex; flex-direction: column; background: #fff; }
+      .tg-text .t { font-family: ${GRID_FONT_SANS}; font-weight: 600;
+        font-size: 13.5px; line-height: 1.28; color: #111;
+        margin-bottom: 9px; text-wrap: pretty; }
+      .tg-text .b { font-family: ${GRID_FONT_SANS}; font-weight: 400;
+        font-size: 12px; line-height: 1.5; color: #333;
+        text-wrap: pretty; flex: 1; overflow: hidden; }
+      .tg-text .b em, .tg-text .b i { color: #555; }
+      .tg-fade { position: absolute; left: 0; right: 0; bottom: 0;
+        height: 56px; background: linear-gradient(to bottom, rgba(255,255,255,0), #fff 85%);
+        pointer-events: none; }
+
+      .tg-img { position: absolute; inset: 0; }
+      .tg-img-fig { position: absolute; inset: 0; opacity: 0.55; }
+      .tg-img-tag { position: absolute; left: 10px; bottom: 10px;
+        font-family: ${GRID_FONT_MONO}; font-size: 9px;
+        letter-spacing: 0.16em; text-transform: uppercase;
+        color: rgba(20,20,20,0.55); background: rgba(255,255,255,0.78);
+        padding: 4px 7px; }
+
+      .tg-cap { margin-top: 9px; display: flex; gap: 5px; align-items: flex-start;
+        font-family: ${GRID_FONT_SANS}; font-size: 12.5px; color: #6b8a96; min-width: 0; }
+      .tg-cap .pin { flex: 0 0 auto; margin-top: 3px; color: #6b8a96; }
+      .tg-cap .t { white-space: nowrap; overflow: hidden;
+        text-overflow: ellipsis; min-width: 0; flex: 1; }
+      .tg-cell:hover .tg-cap { color: #2e4f5a; }
+    `}</style>
+  );
+}
+
+function GridViewToggle({ current, onSwitch }) {
+  const opts = [
+    { id: 'spatial',  l: 'flow',     glyph: <FlowDotsGlyph active={current === 'spatial'}/> },
+    { id: 'timeline', l: 'timeline', glyph: <TimelineGlyph active={current === 'timeline'}/> },
+    { id: 'grid',     l: 'grid',     glyph: <GridGlyph    active={current === 'grid'}/> },
+  ];
+  return (
+    <div className="tg-vt">
+      {opts.map(o => (
+        <button key={o.id} className={current === o.id ? 'on' : ''}
+          onClick={() => onSwitch(o.id)}>
+          {o.glyph} {o.l}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function FlowDotsGlyph({ active }) {
+  const c = active ? '#fff' : '#555';
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10">
+      <circle cx="2" cy="2.5" r="1.1" fill={c}/>
+      <circle cx="6.5" cy="3.5" r="1.1" fill={c}/>
+      <circle cx="3.5" cy="6.5" r="1.1" fill={c}/>
+      <circle cx="8" cy="7.5" r="1.1" fill={c}/>
+    </svg>
+  );
+}
+function TimelineGlyph({ active }) {
+  const c = active ? '#fff' : '#555';
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10">
+      <line x1="0" y1="5" x2="10" y2="5" stroke={c} strokeWidth="1"/>
+      <circle cx="2" cy="5" r="1" fill={c}/>
+      <circle cx="5" cy="5" r="1" fill={c}/>
+      <circle cx="8" cy="5" r="1" fill={c}/>
+    </svg>
+  );
+}
+function GridGlyph({ active }) {
+  const c = active ? '#fff' : '#555';
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10">
+      <rect x="0.5" y="0.5" width="3.5" height="3.5" fill="none" stroke={c} strokeWidth="1"/>
+      <rect x="6"   y="0.5" width="3.5" height="3.5" fill="none" stroke={c} strokeWidth="1"/>
+      <rect x="0.5" y="6"   width="3.5" height="3.5" fill="none" stroke={c} strokeWidth="1"/>
+      <rect x="6"   y="6"   width="3.5" height="3.5" fill="none" stroke={c} strokeWidth="1"/>
+    </svg>
+  );
+}
+
+function PinGlyph() {
+  return (
+    <svg className="pin" width="9" height="11" viewBox="0 0 9 11">
+      <circle cx="4.5" cy="3.5" r="2.7" fill="none" stroke="currentColor" strokeWidth="1"/>
+      <path d="M4.5 6.5 L4.5 10.5" stroke="currentColor" strokeWidth="1"/>
+    </svg>
+  );
+}
+
+function GridView({ thread, threadView, setThreadView, onBack, onOpenFind, onOpenNote, cardOverlay }) {
+  const owner = thread.owner || 'Maya R.';
   const items = [
     ...thread.fl.map(f => ({ kind: 'find', data: f, days: ageToDays(f.d), age: f.d })),
     ...(thread.notesList || []).map(n => ({ kind: 'note', data: n, days: ageToDays(n.d), age: n.d })),
@@ -1140,33 +1275,38 @@ function GridView({ thread, palette, chrome, onOpenFind, onOpenNote }) {
   // Newest first — smaller days-ago = more recent.
   items.sort((a, b) => a.days - b.days);
   return (
-    <div style={{
-      position: "fixed", inset: 0, background: ARENA_BG,
-      overflowY: "auto",
-    }}>
-      {chrome.header}
-      {chrome.breadcrumb}
-      {chrome.identityCard}
-      {chrome.viewToggle}
-      {chrome.apertures.map((a, i) => <ApT key={i} {...a} />)}
-      {chrome.cardOverlay}
-      <div style={{
-        paddingTop: 170,
-        paddingLeft: ARENA_PAD_X, paddingRight: ARENA_PAD_X,
-        paddingBottom: 48,
-      }}>
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: `repeat(auto-fill, minmax(${ARENA_COL_MIN}px, 1fr))`,
-          columnGap: ARENA_GAP_X,
-          rowGap: ARENA_GAP_Y,
-        }}>
+    <div className="tg-root">
+      <GridStyleTag />
+      <div className="tg-chrome">
+        <div className="left">
+          <button className="tg-back" onClick={onBack}>← back to the promenade</button>
+        </div>
+        <div className="center">
+          <span className="tg-center-label">on {owner}&rsquo;s thread</span>
+        </div>
+        <div className="right">
+          <GridViewToggle current={threadView} onSwitch={setThreadView} />
+        </div>
+      </div>
+      <div className="tg-pad">
+        <div className="tg-thead">
+          <div className="meta">
+            <span>{owner}&rsquo;s thread</span>
+            <span className="sep">·</span>
+            <span>pursuing for {thread.age || '—'}</span>
+            <span className="sep">·</span>
+            <span>{items.length} cards on the promenade</span>
+          </div>
+          <h1 className="q">{thread.q}</h1>
+        </div>
+        <div className="tg-grid">
           {items.map((it, idx) => (
-            <GridTile key={idx} item={it} palette={palette}
+            <GridTile key={idx} item={it}
               onOpen={() => it.kind === 'find' ? onOpenFind(it.data) : onOpenNote(it.data)} />
           ))}
         </div>
       </div>
+      {cardOverlay}
     </div>
   );
 }
@@ -1174,82 +1314,75 @@ function GridView({ thread, palette, chrome, onOpenFind, onOpenNote }) {
 function GridTile({ item, onOpen }) {
   const isFind = item.kind === 'find';
   const titleText = isFind ? item.data.t : item.data.cap;
-  const media = isFind
-    ? deriveFindMedia({
-        id: item.data.id || `f-${titleText}-${item.age}`,
-        glyph: item.data.i, source: item.data.s || '', title: titleText,
-      })
-    : deriveNoteMedia({
-        id: `n-${titleText}-${item.age}`,
-        noteType: item.data.type, glyph: '', title: titleText, dur: item.data.dur,
-      });
+  // Image-tile path: only photo/drawing per the spec. Everything else
+  // (book, article, audio, podcast, notes-text, etc.) renders as a
+  // text tile with title + body fading.
+  const isImage = isFind
+    ? (item.data.i === '📸' || item.data.i === '🎞' || item.data.i === '✎')
+    : (item.data.type === 'image');
+  const hue = isFind
+    ? (() => {
+        const id = item.data.id || (item.data.t + item.data.s + item.data.d);
+        return etherHueFor(id);
+      })()
+    : etherHueFor((item.data.cap || '') + (item.data.d || ''));
+  const body = isFind
+    ? (item.data.note || item.data.s || '')
+    : (item.data.cap || '');
+  // For notes we have no separate title/body; show the caption as both
+  // (title at top, no body) since the caption IS the content.
+  const title = isFind
+    ? titleText
+    : (item.data.dur ? `${titleText} (${item.data.dur})` : titleText);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
-      {/* The bordered tile — square, content fills entirely */}
-      <div onClick={onOpen}
-        style={{
-          position: 'relative', cursor: 'pointer',
-          aspectRatio: '1 / 1',
-          background: '#FFFFFF',
-          border: `1px solid ${ARENA_BORDER}`,
-          overflow: 'hidden',
-        }}>
-        {media
-          ? <Thumbnail media={media} kind={item.kind} width={ARENA_COL_MIN} height={ARENA_COL_MIN} fill />
-          : <TextTile text={titleText} />}
+    <div className="tg-cell" onClick={onOpen}>
+      <div className="tg-tile">
+        {isImage
+          ? <ImageTilePlaceholder hue={hue} scene={isFind ? 'photo' : (item.data.type || 'image')} count={1} />
+          : <TextTileBody title={title} body={isFind ? body : ''} />}
       </div>
-      {/* Title label BELOW the tile, outside the border */}
-      <div style={{
-        marginTop: 10, fontFamily: FT, fontSize: 12,
-        color: ARENA_LABEL, lineHeight: 1.35,
-        display: 'flex', alignItems: 'flex-start', gap: 5,
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>
-        <span style={{ color: ARENA_LABEL_X, fontSize: 10, lineHeight: '14px' }}>·</span>
-        <span style={{
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          textDecoration: 'underline', textDecorationColor: ARENA_BORDER,
-          textUnderlineOffset: 3,
-        }}>{titleText}</span>
+      <div className="tg-cap">
+        <PinGlyph />
+        <span className="t">{titleText}</span>
       </div>
     </div>
   );
 }
 
-// Text-only tile content — for notes without media. Bold heading at top,
-// body paragraph below, gradient fade at the bottom for truncation.
-function TextTile({ text }) {
-  // Treat the first sentence (up to ~110 chars) as a heading; rest as
-  // body. If the caption is short, the heading carries it.
-  let heading = text || '';
-  let body = '';
-  const m = (text || '').match(/^([^.!?]+[.!?])\s+(.+)$/s);
-  if (m && m[1].length < 110) { heading = m[1]; body = m[2]; }
+function TextTileBody({ title, body }) {
   return (
-    <div style={{
-      position: 'absolute', inset: 0,
-      padding: '18px 18px 22px',
-      display: 'flex', flexDirection: 'column', gap: 10,
-      overflow: 'hidden',
-    }}>
-      <div style={{
-        fontFamily: FT, fontSize: 14.5, lineHeight: 1.32,
-        color: '#1A1714', fontWeight: 600,
-      }}>{heading}</div>
-      {body && (
-        <div style={{
-          fontFamily: FT, fontSize: 13, lineHeight: 1.4,
-          color: '#3F3F3F', flex: 1, overflow: 'hidden',
-        }}>{body}</div>
-      )}
-      {/* Bottom gradient fade — matches are.na's truncation treatment */}
-      <div style={{
-        position: 'absolute', left: 0, right: 0, bottom: 0, height: 40,
-        background: 'linear-gradient(to bottom, rgba(255,255,255,0), #FFFFFF)',
-        pointerEvents: 'none',
-      }}/>
+    <div className="tg-text">
+      <div className="t">{title}</div>
+      {body && <div className="b">{body}</div>}
+      <div className="tg-fade" />
     </div>
   );
+}
+
+function ImageTilePlaceholder({ hue, scene, count }) {
+  const a = `oklch(0.86 0.025 ${hue})`;
+  const b = `oklch(0.79 0.035 ${hue})`;
+  return (
+    <div className="tg-img" style={{
+      background: `repeating-linear-gradient(135deg, ${a} 0 14px, ${b} 14px 28px)`,
+    }}>
+      <svg className="tg-img-fig" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
+        <rect x="0" y="64" width="100" height="36" fill={`oklch(0.5 0.05 ${hue})`} opacity="0.55"/>
+        <circle cx="50" cy="44" r="14" fill="none" stroke={`oklch(0.42 0.06 ${hue})`} strokeWidth="1"/>
+      </svg>
+      <div className="tg-img-tag">{scene} · {count}</div>
+    </div>
+  );
+}
+
+// Stable hue per item id so the striped placeholder colour is consistent
+// across renders. Limited to warm/earth/cool palette that plays with
+// the white tile background.
+function etherHueFor(s) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  const palette = [18, 28, 40, 78, 160, 200, 230, 260, 340];
+  return palette[(h >>> 0) % palette.length];
 }
 
 // Queue dock — the "stumbled on this find" area. Finds saved into a
@@ -2090,8 +2223,10 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
     return (
       <GridView
         thread={thread}
-        palette={palette}
-        chrome={{ header, breadcrumb, identityCard, viewToggle, apertures, cardOverlay }}
+        threadView={threadView}
+        setThreadView={setThreadView}
+        onBack={() => navigate('home')}
+        cardOverlay={cardOverlay}
         onOpenFind={(find) => { setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "find", data: find }); }}
         onOpenNote={(note) => { setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "note", data: note }); }}
       />
