@@ -26,7 +26,7 @@ import {
   Room, PanZoomCanvas, Breadcrumb,
 } from '../shell/shell.jsx';
 import {
-  addFindToThread, getAllThreads, isOwnThread, spawnThreadFromCard,
+  queueFindForThread, getAllThreads, isOwnThread, spawnThreadFromCard,
 } from '../lib/threads.js';
 import {
   getPromenadeItems, buildClusters, layoutCards, ownCourtyardNames,
@@ -403,7 +403,7 @@ function FocusCard({ item, ownCourtyards, onAction, navigate, onPrev, onNext, po
             onChange={(e) => {
               const id = e.target.value;
               if (!id) return;
-              const res = addFindToThread(id, {
+              const res = queueFindForThread(id, {
                 title: item.title,
                 source: item.source || (isNote ? `note from ${item.owner}` : ''),
                 url: item.url || '',

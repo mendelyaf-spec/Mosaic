@@ -16,8 +16,12 @@ import {
 import { WM } from '../data/wm-data.js';
 import {
   isOwnThread, setFindNote, addFindToThread, spawnThreadFromCard, getAllThreads,
+  getThreadById,
   loadThreadLayout, saveThreadLayout,
   loadThreadShapes, saveThreadShapes,
+  loadThreadEther, saveThreadEther,
+  loadThreadBorders, saveThreadBorders,
+  placeQueuedFind, dismissQueuedFind,
 } from '../lib/threads.js';
 import { deriveFindMedia, deriveNoteMedia } from '../lib/promenade.js';
 import { Thumbnail } from './PromenadeThumbnail.jsx';
@@ -49,6 +53,131 @@ const SHAPE_DEFS = {
 };
 const STARTER_SHAPES   = ['rect','circle','hex','soft-hex','oval','square','triangle','diamond'];
 const COMMUNITY_SHAPES = ['octagon','rosette','knot'];
+
+// ── Border library — color & thickness for a single card's outline ──
+const BORDER_COLORS = [
+  { id: 'ink',       label: 'Ink',       value: '#1A1714' },
+  { id: 'terracotta',label: 'Terracotta',value: '#B25C2E' },
+  { id: 'sand',      label: 'Sand',      value: '#C4B79F' },
+  { id: 'forest',    label: 'Forest',    value: '#2F5A3A' },
+  { id: 'indigo',    label: 'Indigo',    value: '#2A3A6A' },
+  { id: 'brown',     label: 'Brown',     value: '#7A4A2A' },
+  { id: 'paper',     label: 'Paper',     value: '#EDEAE1' },
+];
+const BORDER_THICKNESSES = [
+  { id: 'hair',  label: 'Hair',   px: 0.75 },
+  { id: 'thin',  label: 'Thin',   px: 1.5 },
+  { id: 'med',   label: 'Medium', px: 2.5 },
+  { id: 'thick', label: 'Thick',  px: 4 },
+];
+
+// ── Ether library — background treatments for the spatial canvas ────
+// Each preset renders an SVG layer sized to the canvas. Uploaded images
+// short-circuit via { kind: 'image', dataUrl }. coiner is shown on the
+// tile when present.
+const ETHER_PRESETS = [
+  { id: 'plain',       label: 'Plain',       coiner: null },
+  { id: 'dots',        label: 'Dots',        coiner: null },
+  { id: 'lines',       label: 'Lines',       coiner: null },
+  { id: 'grid',        label: 'Grid',        coiner: null },
+  { id: 'rings',       label: 'Rings',       coiner: null },
+  { id: 'crosshatch',  label: 'Crosshatch',  coiner: null },
+  { id: 'vignette',    label: 'Vignette',    coiner: null },
+  { id: 'wayfinding',  label: 'Wayfinding',  coiner: '@asha' },
+];
+
+// Render the ether for a given preset id at canvas coordinates. The
+// returned element absolutely positions itself across (0,0)→(w,h) and
+// is non-interactive (pointerEvents none). Cards always render above it.
+function EtherLayer({ ether, w, h, accent }) {
+  if (!ether) return null;
+  if (ether.kind === 'image') {
+    return (
+      <div style={{
+        position: 'absolute', left: 0, top: 0, width: w, height: h,
+        backgroundImage: `url(${ether.dataUrl})`,
+        backgroundSize: 'cover', backgroundPosition: 'center',
+        opacity: 0.35, pointerEvents: 'none',
+      }} />
+    );
+  }
+  const id = ether.value || ether.kind;
+  // SVG patterns rendered at canvas scale.
+  const stroke = '#1A1714';
+  const fade   = 0.10;
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}
+      style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none' }}>
+      <defs>
+        {id === 'dots' && (
+          <pattern id="et-dots" width="40" height="40" patternUnits="userSpaceOnUse">
+            <circle cx="2" cy="2" r="1.1" fill={stroke} fillOpacity={fade + 0.04}/>
+          </pattern>
+        )}
+        {id === 'lines' && (
+          <pattern id="et-lines" width="40" height="40" patternUnits="userSpaceOnUse">
+            <line x1="0" y1="20" x2="40" y2="20" stroke={stroke} strokeOpacity={fade} strokeWidth="0.6"/>
+          </pattern>
+        )}
+        {id === 'grid' && (
+          <pattern id="et-grid" width="48" height="48" patternUnits="userSpaceOnUse">
+            <path d="M48 0 L0 0 L0 48" fill="none" stroke={stroke} strokeOpacity={fade} strokeWidth="0.5"/>
+          </pattern>
+        )}
+        {id === 'crosshatch' && (
+          <pattern id="et-cross" width="22" height="22" patternUnits="userSpaceOnUse">
+            <path d="M-1 23 L23 -1 M-1 -1 L23 23" stroke={stroke} strokeOpacity={fade} strokeWidth="0.5"/>
+          </pattern>
+        )}
+      </defs>
+      {id === 'plain' && null}
+      {id === 'dots'       && <rect width={w} height={h} fill="url(#et-dots)"/>}
+      {id === 'lines'      && <rect width={w} height={h} fill="url(#et-lines)"/>}
+      {id === 'grid'       && <rect width={w} height={h} fill="url(#et-grid)"/>}
+      {id === 'crosshatch' && <rect width={w} height={h} fill="url(#et-cross)"/>}
+      {id === 'rings' && (() => {
+        // Concentric circles centered on canvas. ~14 rings, soft.
+        const cxR = w / 2, cyR = h / 2;
+        const step = Math.max(w, h) / 26;
+        return Array.from({ length: 18 }, (_, i) => (
+          <circle key={i} cx={cxR} cy={cyR} r={step * (i + 1)}
+            fill="none" stroke={stroke} strokeOpacity={0.08 - i * 0.003}
+            strokeWidth="0.7"/>
+        ));
+      })()}
+      {id === 'wayfinding' && (() => {
+        // Topographic-ish irregular concentric contours. Built from
+        // mildly perturbed ellipses around the canvas centre.
+        const cxR = w / 2, cyR = h / 2;
+        const step = Math.max(w, h) / 32;
+        return Array.from({ length: 16 }, (_, i) => {
+          const rx = step * (i + 1) * (1 + Math.sin(i * 1.3) * 0.06);
+          const ry = step * (i + 1) * (1 + Math.cos(i * 1.1) * 0.06);
+          const op = 0.12 - i * 0.004;
+          return (
+            <g key={i} transform={`rotate(${i * 7} ${cxR} ${cyR})`}>
+              <ellipse cx={cxR} cy={cyR} rx={rx} ry={ry}
+                fill="none" stroke={accent}
+                strokeOpacity={op > 0 ? op : 0.02}
+                strokeWidth="0.9"/>
+            </g>
+          );
+        });
+      })()}
+      {id === 'vignette' && (
+        <>
+          <defs>
+            <radialGradient id="et-vig" cx="50%" cy="50%" r="65%">
+              <stop offset="60%" stopColor="#1A1714" stopOpacity="0"/>
+              <stop offset="100%" stopColor="#1A1714" stopOpacity="0.18"/>
+            </radialGradient>
+          </defs>
+          <rect width={w} height={h} fill="url(#et-vig)"/>
+        </>
+      )}
+    </svg>
+  );
+}
 
 
 // Stable key for an item's saved position. Finds carry an id when they
@@ -154,17 +283,22 @@ function MileMarker({ mm, x, y, isCurrent, palette, onOpen }) {
   );
 }
 
-function FindCard({ find, x, y, palette, onOpen, onShared, shapeId = 'rect', selected = false }) {
+function FindCard({ find, x, y, palette, onOpen, onShared, shapeId = 'rect', selected = false, borderOverride = null }) {
   const shared = !!find.sharedWith;
   const shaped = shapeId && shapeId !== 'rect';
+  const borderColor = borderOverride?.color;
+  const borderPx    = borderOverride?.thickness;
+  const customBorder = !!(borderColor || borderPx);
   return (
     <div data-card onClick={onOpen} style={{
       position: "absolute", left: x, top: y,
       width: 240, cursor: "pointer",
       background: shaped ? "transparent" : "#FFFFFF",
       border: shaped
-        ? "1px solid transparent"
-        : (shared ? `1.5px solid ${palette.accent}88` : "1px solid rgba(26,23,20,.08)"),
+        ? (customBorder ? `${borderPx || 1.6}px solid transparent` : "1px solid transparent")
+        : (customBorder
+            ? `${borderPx || 1.5}px solid ${borderColor || palette.accent}`
+            : (shared ? `1.5px solid ${palette.accent}88` : "1px solid rgba(26,23,20,.08)")),
       borderRadius: 6,
       padding: "10px 12px",
       boxShadow: shaped ? "none"
@@ -183,8 +317,8 @@ function FindCard({ find, x, y, palette, onOpen, onShared, shapeId = 'rect', sel
             pointerEvents: 'none', overflow: 'visible',
           }}>
           <path d={SHAPE_DEFS[shapeId].path} fill="none"
-            stroke={palette.accent + 'CC'}
-            strokeWidth={1.6}
+            stroke={customBorder ? (borderColor || palette.accent) : (palette.accent + 'CC')}
+            strokeWidth={customBorder ? (borderPx || 1.6) : 1.6}
             vectorEffect="non-scaling-stroke" />
         </svg>
       )}
@@ -228,16 +362,23 @@ function FindCard({ find, x, y, palette, onOpen, onShared, shapeId = 'rect', sel
   );
 }
 
-function NoteCard({ note, x, y, palette, onOpen, onShared, shapeId = 'rect', selected = false }) {
+function NoteCard({ note, x, y, palette, onOpen, onShared, shapeId = 'rect', selected = false, borderOverride = null }) {
   const icon = note.type === "audio" ? "\ud83c\udf99" : note.type === "image" ? "\ud83d\udcf8" : "\u270e";
   const shared = !!note.sharedWith;
   const shaped = shapeId && shapeId !== 'rect';
+  const borderColor = borderOverride?.color;
+  const borderPx    = borderOverride?.thickness;
+  const customBorder = !!(borderColor || borderPx);
   return (
     <div data-card onClick={onOpen} style={{
       position: "absolute", left: x, top: y,
       width: 220, cursor: "pointer",
       background: shaped ? "transparent" : palette.card,
-      border: shaped ? "1px solid transparent" : `1px solid ${palette.accent}33`,
+      border: shaped
+        ? (customBorder ? `${borderPx || 1.6}px solid transparent` : "1px solid transparent")
+        : (customBorder
+            ? `${borderPx || 1.5}px solid ${borderColor || palette.accent}`
+            : `1px solid ${palette.accent}33`),
       borderRadius: 6,
       padding: "10px 12px",
       transform: shaped ? "none" : "rotate(-1deg)",
@@ -253,8 +394,8 @@ function NoteCard({ note, x, y, palette, onOpen, onShared, shapeId = 'rect', sel
             pointerEvents: 'none', overflow: 'visible',
           }}>
           <path d={SHAPE_DEFS[shapeId].path} fill="none"
-            stroke={palette.accent + 'CC'}
-            strokeWidth={1.6}
+            stroke={customBorder ? (borderColor || palette.accent) : (palette.accent + 'CC')}
+            strokeWidth={customBorder ? (borderPx || 1.6) : 1.6}
             vectorEffect="non-scaling-stroke" />
         </svg>
       )}
@@ -451,15 +592,19 @@ function TimelineScrubber({ markers, oldestDays, onScrub, label = "thread time" 
   );
 }
 
-// Design panel — unified surface for the two design tools (Rearrange and
-// Shape). Sits in the top-left chrome below the View Mode toggle.
+// Design panel — unified surface for the design tools (Rearrange,
+// Shape, Border, Ether). Sits in the top-left chrome below the View
+// Mode toggle.
 function DesignPanel({
   mode, onSwitch, palette,
-  layoutDirty, shapesDirty,
-  onLockLayout, onLockShapes,
-  onResetLayout, onResetShapes,
+  layoutDirty, shapesDirty, bordersDirty, etherDirty,
+  onLockLayout, onLockShapes, onLockBorders, onLockEther,
+  onResetLayout, onResetShapes, onResetBorders, onResetEther,
   onExit,
-  selectedCardKey, currentShapeForSelected, onPickShape,
+  selectedCardKey, currentShapeForSelected,
+  currentBorderForSelected,
+  onPickShape, onPickBorderColor, onPickBorderThickness,
+  currentEther, onPickEther, onUploadEther,
 }) {
   const tabBtn = (id, label) => {
     const active = mode === id;
@@ -477,7 +622,7 @@ function DesignPanel({
 
   return (
     <div data-ui style={{
-      marginTop: 6, width: 244,
+      marginTop: 6, width: 280,
       background: "rgba(255,255,255,.96)",
       border: `1px solid ${palette.accent}55`,
       borderRadius: 8, padding: "10px 11px 12px",
@@ -502,8 +647,10 @@ function DesignPanel({
         display: "flex", gap: 3, padding: 2,
         background: "rgba(26,23,20,.04)", borderRadius: 8, marginBottom: 9,
       }}>
-        {tabBtn("rearrange", "Rearrange")}
-        {tabBtn("shape", "Shape")}
+        {tabBtn("rearrange", "Move")}
+        {tabBtn("shape",     "Shape")}
+        {tabBtn("border",    "Border")}
+        {tabBtn("ether",     "Ether")}
       </div>
 
       {mode === "rearrange" && (
@@ -562,7 +709,237 @@ function DesignPanel({
           </div>
         </>
       )}
+
+      {mode === "border" && (
+        <>
+          <p style={{
+            margin: "0 0 8px", fontSize: 10.5, lineHeight: 1.4,
+            color: "#5E5A55", fontFamily: FT,
+          }}>
+            {selectedCardKey
+              ? "Choose a color, then a thickness."
+              : "Click a card to select it, then pick a border."}
+          </p>
+          <BorderLibrary
+            palette={palette}
+            disabled={!selectedCardKey}
+            current={currentBorderForSelected}
+            onPickColor={onPickBorderColor}
+            onPickThickness={onPickBorderThickness} />
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 10 }}>
+            <button onClick={onLockBorders} disabled={!bordersDirty} style={{
+              fontSize: 10, fontWeight: 600, padding: "5px 11px", borderRadius: 6,
+              cursor: bordersDirty ? "pointer" : "default", fontFamily: FT,
+              border: "none",
+              background: bordersDirty ? palette.accent : "rgba(26,23,20,.08)",
+              color: bordersDirty ? "#FAF5E9" : "#9A968F",
+            }}>Lock borders</button>
+            <button onClick={onResetBorders} style={{
+              fontSize: 10, padding: "5px 11px", borderRadius: 6,
+              cursor: "pointer", fontFamily: FT,
+              border: `1px solid ${palette.accent}33`,
+              background: "transparent", color: "#5E5A55",
+            }} title="Restore the default border on every card">Reset all</button>
+          </div>
+        </>
+      )}
+
+      {mode === "ether" && (
+        <>
+          <p style={{
+            margin: "0 0 8px", fontSize: 10.5, lineHeight: 1.4,
+            color: "#5E5A55", fontFamily: FT,
+          }}>Pick a background for the spatial canvas — or upload your own.</p>
+          <EtherLibrary
+            palette={palette}
+            current={currentEther}
+            onPick={onPickEther}
+            onUpload={onUploadEther} />
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 10 }}>
+            <button onClick={onLockEther} disabled={!etherDirty} style={{
+              fontSize: 10, fontWeight: 600, padding: "5px 11px", borderRadius: 6,
+              cursor: etherDirty ? "pointer" : "default", fontFamily: FT,
+              border: "none",
+              background: etherDirty ? palette.accent : "rgba(26,23,20,.08)",
+              color: etherDirty ? "#FAF5E9" : "#9A968F",
+            }}>Lock ether</button>
+            <button onClick={onResetEther} style={{
+              fontSize: 10, padding: "5px 11px", borderRadius: 6,
+              cursor: "pointer", fontFamily: FT,
+              border: `1px solid ${palette.accent}33`,
+              background: "transparent", color: "#5E5A55",
+            }} title="Restore the default paper background">Clear</button>
+          </div>
+        </>
+      )}
     </div>
+  );
+}
+
+// Two-row library: color swatches above, thickness rules below.
+function BorderLibrary({ palette, disabled, current, onPickColor, onPickThickness }) {
+  const wrapDim = disabled ? { opacity: 0.5, pointerEvents: 'none' } : null;
+  return (
+    <div style={wrapDim}>
+      <div style={{
+        fontSize: 8.5, letterSpacing: ".08em", textTransform: "uppercase",
+        color: "#9A968F", fontFamily: FT, marginBottom: 4,
+      }}>color</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 5 }}>
+        {BORDER_COLORS.map(c => {
+          const active = current?.color === c.value;
+          return (
+            <button key={c.id} title={c.label} onClick={() => onPickColor(c.value)} style={{
+              height: 28, padding: 0, cursor: "pointer",
+              background: c.value,
+              border: active ? `2px solid ${palette.accent}` : '1px solid rgba(26,23,20,.10)',
+              borderRadius: 3,
+            }}/>
+          );
+        })}
+      </div>
+      <div style={{
+        fontSize: 8.5, letterSpacing: ".08em", textTransform: "uppercase",
+        color: "#9A968F", fontFamily: FT, marginTop: 10, marginBottom: 4,
+      }}>thickness</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
+        {BORDER_THICKNESSES.map(t => {
+          const active = current?.thickness === t.px;
+          return (
+            <button key={t.id} title={t.label} onClick={() => onPickThickness(t.px)} style={{
+              height: 28, padding: 0, cursor: "pointer",
+              background: "#FFFFFF",
+              border: active ? `1.5px solid ${palette.accent}` : '1px solid rgba(26,23,20,.10)',
+              borderRadius: 3, display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <div style={{
+                width: '70%', height: t.px,
+                background: current?.color || "#3A3530",
+                borderRadius: 1,
+              }}/>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Ether library: preset tiles + upload tile.
+function EtherLibrary({ palette, current, onPick, onUpload }) {
+  const fileInputRef = useRef(null);
+  const onFileChange = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (file.size > 2_500_000) {
+      alert('That image is bigger than ~2.5MB — try a smaller one. (Local storage is limited.)');
+      e.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => onUpload({ kind: 'image', dataUrl: reader.result });
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+  return (
+    <div>
+      <div style={{
+        fontSize: 8.5, letterSpacing: ".08em", textTransform: "uppercase",
+        color: "#9A968F", fontFamily: FT, marginBottom: 4,
+      }}>presets</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+        {ETHER_PRESETS.map(p => {
+          const active = current?.kind === 'preset' && current.value === p.id;
+          return (
+            <button key={p.id} onClick={() => onPick({ kind: 'preset', value: p.id })}
+              title={p.label + (p.coiner ? ` · ${p.coiner}` : '')}
+              style={{
+                position: 'relative', height: 50, padding: 0,
+                background: '#FFFFFF',
+                border: active ? `1.5px solid ${palette.accent}` : '1px solid rgba(26,23,20,.10)',
+                borderRadius: 4, cursor: 'pointer', overflow: 'hidden',
+              }}>
+              <EtherTilePreview id={p.id} accent={palette.accent} />
+              {p.coiner && (
+                <span style={{
+                  position: 'absolute', bottom: 2, right: 4,
+                  fontFamily: MT, fontSize: 7.5, color: '#B0ADA6',
+                }}>{p.coiner.replace('@','')}</span>
+              )}
+            </button>
+          );
+        })}
+        <button onClick={() => fileInputRef.current?.click()}
+          title="Upload an image from your computer"
+          style={{
+            height: 50, padding: 0, cursor: "pointer",
+            background: "transparent",
+            border: current?.kind === 'image'
+              ? `1.5px solid ${palette.accent}` : '1px dashed rgba(26,23,20,.22)',
+            borderRadius: 4, color: "#9A968F",
+            fontFamily: FT, fontSize: 8.5, lineHeight: 1.2,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            textAlign: "center", padding: "2px 4px",
+            position: 'relative', overflow: 'hidden',
+          }}>
+          {current?.kind === 'image' ? (
+            <div style={{
+              position: 'absolute', inset: 0,
+              backgroundImage: `url(${current.dataUrl})`,
+              backgroundSize: 'cover', backgroundPosition: 'center',
+            }}/>
+          ) : <>+ upload<br/>image</>}
+        </button>
+        <input ref={fileInputRef} type="file" accept="image/*"
+          onChange={onFileChange} style={{ display: 'none' }} />
+      </div>
+    </div>
+  );
+}
+
+// Small live preview of an ether preset shown inside a tile.
+function EtherTilePreview({ id, accent }) {
+  const common = { width: '100%', height: '100%', display: 'block' };
+  if (id === 'plain') return <div style={{ ...common, background: '#F8F4E8' }} />;
+  return (
+    <svg viewBox="0 0 50 30" preserveAspectRatio="xMidYMid slice" style={common}>
+      <rect width="50" height="30" fill="#F8F4E8" />
+      {id === 'dots' && Array.from({length: 24}, (_,i) => (
+        <circle key={i} cx={2 + (i % 6) * 8} cy={3 + Math.floor(i / 6) * 7} r="0.7" fill="#1A1714" opacity="0.5"/>
+      ))}
+      {id === 'lines' && [0,1,2,3,4].map(i => (
+        <line key={i} x1="2" y1={3 + i * 6} x2="48" y2={3 + i * 6} stroke="#1A1714" strokeOpacity="0.3" strokeWidth="0.4"/>
+      ))}
+      {id === 'grid' && (
+        <>
+          {[0,1,2,3,4,5,6].map(i => <line key={'v'+i} x1={2 + i * 7} y1="0" x2={2 + i * 7} y2="30" stroke="#1A1714" strokeOpacity="0.25" strokeWidth="0.3"/>)}
+          {[0,1,2,3,4].map(i => <line key={'h'+i} x1="0" y1={3 + i * 6} x2="50" y2={3 + i * 6} stroke="#1A1714" strokeOpacity="0.25" strokeWidth="0.3"/>)}
+        </>
+      )}
+      {id === 'rings' && Array.from({length: 5}, (_,i) => (
+        <circle key={i} cx="25" cy="15" r={3 + i * 3} fill="none" stroke="#1A1714" strokeOpacity={0.32 - i * 0.05} strokeWidth="0.4"/>
+      ))}
+      {id === 'crosshatch' && Array.from({length: 12}, (_,i) => (
+        <line key={i} x1={-5 + i * 6} y1="0" x2={5 + i * 6} y2="30" stroke="#1A1714" strokeOpacity="0.25" strokeWidth="0.3"/>
+      ))}
+      {id === 'wayfinding' && Array.from({length: 7}, (_,i) => (
+        <ellipse key={i} cx="25" cy="15"
+          rx={3 + i * 3 + Math.sin(i) * 1.5}
+          ry={2 + i * 2.5 + Math.cos(i) * 1.2}
+          fill="none" stroke={accent} strokeOpacity={0.35 - i * 0.04} strokeWidth="0.5"/>
+      ))}
+      {id === 'vignette' && (
+        <>
+          <defs>
+            <radialGradient id="tile-vig" cx="50%" cy="50%" r="60%">
+              <stop offset="55%" stopColor="#1A1714" stopOpacity="0"/>
+              <stop offset="100%" stopColor="#1A1714" stopOpacity="0.4"/>
+            </radialGradient>
+          </defs>
+          <rect width="50" height="30" fill="url(#tile-vig)"/>
+        </>
+      )}
+    </svg>
   );
 }
 
@@ -759,7 +1136,96 @@ function GridQuoteBand({ text }) {
   );
 }
 
-function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null }) {
+// Queue dock — the "stumbled on this find" area. Finds saved into a
+// thread from the Promenade land here in a raw state. The owner gives
+// them form (places them in the orbit) or dismisses them.
+function QueueDock({ queued, palette, onPlace, onDismiss }) {
+  return (
+    <div data-ui style={{
+      position: "fixed", right: 24, bottom: 24, zIndex: 24,
+      width: 320, maxHeight: "60vh", overflowY: "auto",
+      background: "rgba(255,255,255,.97)",
+      border: `1px solid ${palette.accent}55`,
+      borderRadius: 8, padding: "12px 14px 14px",
+      boxShadow: "0 12px 30px rgba(40,30,15,.14)",
+    }}>
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        marginBottom: 10,
+      }}>
+        <span style={{
+          fontSize: 9, letterSpacing: ".18em", textTransform: "uppercase",
+          color: palette.accent, fontFamily: FT, fontWeight: 700,
+        }}>↓ stumbled · {queued.length} waiting</span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {queued.map(f => (
+          <div key={f.id} style={{
+            padding: "10px 11px",
+            background: "#FBF8F0",
+            border: `1px solid ${palette.accent}66`,
+            borderRadius: 4,
+          }}>
+            <div style={{
+              fontSize: 8.5, letterSpacing: ".12em", textTransform: "uppercase",
+              color: palette.accent, fontFamily: MT, fontWeight: 600,
+              marginBottom: 4, display: "flex", justifyContent: "space-between",
+            }}>
+              <span>stumbled on this find</span>
+              <span style={{ color: "#9A968F" }}>{f.d}</span>
+            </div>
+            <div style={{
+              fontFamily: ST, fontSize: 13, color: "#1A1714",
+              lineHeight: 1.3, marginBottom: 4,
+              display: "-webkit-box", WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical", overflow: "hidden",
+            }}>{f.t}</div>
+            {f.s && (
+              <div style={{
+                fontSize: 10, color: "#7A756F", fontFamily: FT,
+                marginBottom: 8, lineHeight: 1.3,
+              }}>{f.s}</div>
+            )}
+            <div style={{
+              fontFamily: FT, fontSize: 10, color: "#5E5A55",
+              padding: "6px 8px",
+              border: "1px dashed rgba(26,23,20,.18)",
+              borderRadius: 3, marginBottom: 8,
+              fontStyle: "italic",
+            }}>
+              In your thread but not yet placed. No shape, no border,
+              no orbit position.
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={() => onPlace(f.id)} style={{
+                fontSize: 10, fontWeight: 600, padding: "5px 11px", borderRadius: 4,
+                cursor: "pointer", fontFamily: MT, letterSpacing: ".08em",
+                textTransform: "uppercase", border: "none",
+                background: palette.accent, color: "#FAF5E9",
+              }}>↓ Give it form</button>
+              <button onClick={() => onDismiss(f.id)} style={{
+                fontSize: 10, padding: "5px 11px", borderRadius: 4,
+                cursor: "pointer", fontFamily: MT, letterSpacing: ".08em",
+                textTransform: "uppercase",
+                border: "1px solid rgba(26,23,20,.12)",
+                background: "transparent", color: "#7A756F",
+              }}>Dismiss</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClose = null }) {
+  // queueVersion bumps when the user places or dismisses a queued find;
+  // re-deriving the thread from storage refreshes the spatial layout.
+  const [queueVersion, setQueueVersion] = useStateT(0);
+  const thread = React.useMemo(
+    () => (typeof window !== 'undefined' ? (getThreadById(propThread.id) || propThread) : propThread),
+    [propThread, queueVersion]
+  );
   const palette = WM.DOMAIN[thread.dc];
   const canvasW = 3200, canvasH = 2000;
   // Scrubber head — days-ago. Default: now. Cards older than (head + 7) dim.
@@ -780,7 +1246,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
   // The owner can enter "design" mode to edit either card POSITIONS
   // (rearrange) or card SHAPES. The two are mutually exclusive within
   // a single Design panel so card clicks always have one clear meaning.
-  // designMode: 'off' | 'rearrange' | 'shape'
+  // designMode: 'off' | 'rearrange' | 'shape' | 'border' | 'ether'
   const [designMode, setDesignMode] = useStateT('off');
   // Position overrides
   const [savedOverrides, setSavedOverrides] = useStateT(() => loadThreadLayout(thread.id));
@@ -790,23 +1256,51 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
   const [savedShapes, setSavedShapes] = useStateT(() => loadThreadShapes(thread.id));
   const [shapes, setShapes] = useStateT(savedShapes);
   const shapesDirty = designMode === 'shape' && JSON.stringify(shapes) !== JSON.stringify(savedShapes);
+  // Border overrides
+  const [savedBorders, setSavedBorders] = useStateT(() => loadThreadBorders(thread.id));
+  const [borders, setBorders] = useStateT(savedBorders);
+  const bordersDirty = designMode === 'border' && JSON.stringify(borders) !== JSON.stringify(savedBorders);
+  // Ether
+  const [savedEther, setSavedEther] = useStateT(() => loadThreadEther(thread.id));
+  const [ether, setEther] = useStateT(savedEther);
+  const etherDirty = designMode === 'ether' && JSON.stringify(ether) !== JSON.stringify(savedEther);
+
   const [selectedCardKey, setSelectedCardKey] = useStateT(null);
   const layoutEdit = designMode === 'rearrange';
   const shapeEdit  = designMode === 'shape';
+  const borderEdit = designMode === 'border';
 
   const enterRearrange = () => { setOverrides(savedOverrides); setSelectedCardKey(null); setDesignMode('rearrange'); };
-  const enterShape     = () => { setShapes(savedShapes); setSelectedCardKey(null); setDesignMode('shape'); };
-  const exitDesign     = () => { setOverrides(savedOverrides); setShapes(savedShapes); setSelectedCardKey(null); setDesignMode('off'); };
+  const enterShape     = () => { setShapes(savedShapes);       setSelectedCardKey(null); setDesignMode('shape'); };
+  const enterBorder    = () => { setBorders(savedBorders);     setSelectedCardKey(null); setDesignMode('border'); };
+  const enterEther     = () => { setEther(savedEther);         setSelectedCardKey(null); setDesignMode('ether'); };
+  const exitDesign     = () => {
+    setOverrides(savedOverrides); setShapes(savedShapes);
+    setBorders(savedBorders); setEther(savedEther);
+    setSelectedCardKey(null); setDesignMode('off');
+  };
   const lockLayout     = () => { saveThreadLayout(thread.id, overrides); setSavedOverrides(overrides); setDesignMode('off'); };
-  const lockShapes     = () => { saveThreadShapes(thread.id, shapes); setSavedShapes(shapes); setSelectedCardKey(null); setDesignMode('off'); };
+  const lockShapes     = () => { saveThreadShapes(thread.id, shapes);    setSavedShapes(shapes);       setSelectedCardKey(null); setDesignMode('off'); };
+  const lockBorders    = () => { saveThreadBorders(thread.id, borders);  setSavedBorders(borders);     setSelectedCardKey(null); setDesignMode('off'); };
+  const lockEther      = () => { saveThreadEther(thread.id, ether);      setSavedEther(ether);         setDesignMode('off'); };
   const resetLayout    = () => { setOverrides({}); };
   const resetShapes    = () => { setShapes({}); setSelectedCardKey(null); };
+  const resetBorders   = () => { setBorders({}); setSelectedCardKey(null); };
+  const resetEther     = () => { setEther(null); };
   const setCardPos     = (key, pos) => setOverrides(prev => ({ ...prev, [key]: pos }));
   const setCardShape   = (key, shapeId) => setShapes(prev => {
     const next = { ...prev };
     if (!shapeId || shapeId === 'rect') delete next[key]; else next[key] = shapeId;
     return next;
   });
+  const setCardBorderColor = (color) => {
+    if (!selectedCardKey) return;
+    setBorders(prev => ({ ...prev, [selectedCardKey]: { ...(prev[selectedCardKey] || {}), color } }));
+  };
+  const setCardBorderThickness = (thickness) => {
+    if (!selectedCardKey) return;
+    setBorders(prev => ({ ...prev, [selectedCardKey]: { ...(prev[selectedCardKey] || {}), thickness } }));
+  };
 
   // When rendered as an in-place expansion on Home (onClose provided), Esc
   // collapses back to the constellation instead of leaving the page.
@@ -858,8 +1352,12 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
   // Finds scatter on the OUTER ring, upper half (so they sit further from
   // the title than the markers but on roughly the same hemisphere).
   // Any saved override (key → {x,y}) wins over the orbital default.
-  const finds = thread.fl.map((f, i) => {
-    const t = (i + 0.5) / Math.max(1, thread.fl.length);
+  // Queued finds (just stumbled-in, not yet placed) are filtered out of
+  // the orbital layout — they live in the QueueDock until given form.
+  const placedFinds = thread.fl.filter(f => !f.queued);
+  const queuedFinds = thread.fl.filter(f => f.queued);
+  const finds = placedFinds.map((f, i) => {
+    const t = (i + 0.5) / Math.max(1, placedFinds.length);
     const baseTheta = Math.PI + 0.2 + t * (Math.PI * 2 - 0.4 - Math.PI);
     const theta = baseTheta + ((i % 3) - 1) * 0.08;
     const r = rOuter + (i % 3) * 36;
@@ -1017,26 +1515,39 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
         <DesignPanel
           mode={designMode}
           onSwitch={(next) => {
-            // Switching between rearrange ↔ shape resets any unsaved
-            // edits in the previous mode (you'd lose them anyway on
-            // exit). Cancel-on-switch keeps the model simple.
+            // Switching tabs cancels unsaved edits in the previous tab
+            // (you'd lose them on exit anyway). Keeps the model simple.
             if (next === 'rearrange') enterRearrange();
             else if (next === 'shape') enterShape();
+            else if (next === 'border') enterBorder();
+            else if (next === 'ether') enterEther();
           }}
           palette={palette}
           layoutDirty={layoutDirty}
           shapesDirty={shapesDirty}
+          bordersDirty={bordersDirty}
+          etherDirty={etherDirty}
           onLockLayout={lockLayout}
           onLockShapes={lockShapes}
+          onLockBorders={lockBorders}
+          onLockEther={lockEther}
           onResetLayout={resetLayout}
           onResetShapes={resetShapes}
+          onResetBorders={resetBorders}
+          onResetEther={resetEther}
           onExit={exitDesign}
           selectedCardKey={selectedCardKey}
           currentShapeForSelected={selectedCardKey ? (shapes[selectedCardKey] || 'rect') : null}
+          currentBorderForSelected={selectedCardKey ? (borders[selectedCardKey] || null) : null}
           onPickShape={(shapeId) => {
             if (!selectedCardKey) return;
             setCardShape(selectedCardKey, shapeId);
-          }} />
+          }}
+          onPickBorderColor={setCardBorderColor}
+          onPickBorderThickness={setCardBorderThickness}
+          currentEther={ether}
+          onPickEther={(e) => setEther(e)}
+          onUploadEther={(e) => setEther(e)} />
       )}
     </div>
   );
@@ -1722,12 +2233,29 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
           {identityCard}
           {viewToggle}
           {cardOverlay}
+          {canEdit && queuedFinds.length > 0 && (
+            <QueueDock
+              queued={queuedFinds}
+              palette={palette}
+              onPlace={(findId) => {
+                placeQueuedFind(thread.id, findId);
+                // mutate in-place — local re-render via state bump
+                setQueueVersion(v => v + 1);
+              }}
+              onDismiss={(findId) => {
+                dismissQueuedFind(thread.id, findId);
+                setQueueVersion(v => v + 1);
+              }}
+            />
+          )}
           {/* Requests / incoming / outgoing live in the Courtyard now —
               the thread interior stays quiet. */}
         </>
       }>
       {({ zoom }) => (
         <>
+          {/* Ether — the chosen background treatment for this thread */}
+          <EtherLayer ether={ether} w={canvasW} h={canvasH} accent={palette.accent} />
           {/* Soft halo behind the title card — anchors the orbit's center */}
           <div style={{
             position: "absolute", left: cx, top: cy,
@@ -1802,7 +2330,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
           {/* Finds — only items that existed by the head's moment in time. */}
           {finds.map((F, i) => (
             <div key={"fw" + i} style={{
-              opacity: (layoutEdit || shapeEdit) ? 1 : (F.days < headDays - 3 ? 0.12 : 1),
+              opacity: (layoutEdit || shapeEdit || borderEdit) ? 1 : (F.days < headDays - 3 ? 0.12 : 1),
               transition: "opacity .25s ease",
               outline: layoutEdit ? `1.5px dashed ${palette.accent}77` : 'none',
               outlineOffset: layoutEdit ? 4 : 0,
@@ -1812,10 +2340,11 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
                 editing={layoutEdit} onDragMove={setCardPos}>
                 <FindCard find={F.f} x={F.x} y={F.y} palette={palette}
                   shapeId={shapes[F.key] || 'rect'}
-                  selected={shapeEdit && selectedCardKey === F.key}
+                  borderOverride={borders[F.key] || null}
+                  selected={(shapeEdit || borderEdit) && selectedCardKey === F.key}
                   onOpen={() => {
                     if (layoutEdit) return;
-                    if (shapeEdit) { setSelectedCardKey(F.key); return; }
+                    if (shapeEdit || borderEdit) { setSelectedCardKey(F.key); return; }
                     setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "find", data: F.f });
                   }}
                   onShared={() => navigate("courtyard", { id: thread.id })} />
@@ -1826,7 +2355,7 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
           {/* Notes */}
           {notes.map((N, i) => (
             <div key={"nw" + i} style={{
-              opacity: (layoutEdit || shapeEdit) ? 1 : (N.days < headDays - 3 ? 0.12 : 1),
+              opacity: (layoutEdit || shapeEdit || borderEdit) ? 1 : (N.days < headDays - 3 ? 0.12 : 1),
               transition: "opacity .25s ease",
               outline: layoutEdit ? `1.5px dashed ${palette.accent}77` : 'none',
               outlineOffset: layoutEdit ? 4 : 0,
@@ -1836,10 +2365,11 @@ function ThreadRoomImpl({ navigate, thread, viewMode = "maya", onClose = null })
                 editing={layoutEdit} onDragMove={setCardPos}>
                 <NoteCard note={N.n} x={N.x} y={N.y} palette={palette}
                   shapeId={shapes[N.key] || 'rect'}
-                  selected={shapeEdit && selectedCardKey === N.key}
+                  borderOverride={borders[N.key] || null}
+                  selected={(shapeEdit || borderEdit) && selectedCardKey === N.key}
                   onOpen={() => {
                     if (layoutEdit) return;
-                    if (shapeEdit) { setSelectedCardKey(N.key); return; }
+                    if (shapeEdit || borderEdit) { setSelectedCardKey(N.key); return; }
                     setNoteDraft(null); setSavedMsg(null); setActiveCard({ kind: "note", data: N.n });
                   }}
                   onShared={() => navigate("courtyard", { id: thread.id })} />

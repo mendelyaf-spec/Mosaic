@@ -9,10 +9,12 @@
 import { readStored, writeStored } from './storage.js';
 import { WM } from '../data/wm-data.js';
 
-const THREADS_KEY = 'mosaic.threads';
-const HIDDEN_KEY  = 'mosaic.hiddenThreads';
-const LAYOUT_KEY  = 'mosaic.threadLayouts.v1';
-const SHAPES_KEY  = 'mosaic.threadShapes.v1';
+const THREADS_KEY  = 'mosaic.threads';
+const HIDDEN_KEY   = 'mosaic.hiddenThreads';
+const LAYOUT_KEY   = 'mosaic.threadLayouts.v1';
+const SHAPES_KEY   = 'mosaic.threadShapes.v1';
+const ETHER_KEY    = 'mosaic.threadEther.v1';
+const BORDERS_KEY  = 'mosaic.threadBorders.v1';
 
 export function loadUserThreads() {
   return readStored(THREADS_KEY, []);
@@ -90,6 +92,115 @@ export function saveThreadShapes(threadId, shapes) {
   const all = readStored(SHAPES_KEY, {});
   all[threadId] = shapes || {};
   writeStored(SHAPES_KEY, all);
+}
+
+// Per-thread "ether" — the background treatment of the spatial view.
+// Either { kind: 'preset', value: presetId } for a built-in pattern, or
+// { kind: 'image', dataUrl: 'data:image/...' } for an uploaded image.
+// null / absent means the default paper background.
+export function loadThreadEther(threadId) {
+  if (!threadId) return null;
+  const all = readStored(ETHER_KEY, {});
+  return all[threadId] || null;
+}
+
+export function saveThreadEther(threadId, ether) {
+  if (!threadId) return;
+  const all = readStored(ETHER_KEY, {});
+  if (ether) all[threadId] = ether;
+  else delete all[threadId];
+  writeStored(ETHER_KEY, all);
+}
+
+// Per-thread card-border overrides: { [cardKey]: { color, thickness } }.
+// Missing entries fall back to the card's default border.
+export function loadThreadBorders(threadId) {
+  if (!threadId) return {};
+  const all = readStored(BORDERS_KEY, {});
+  return all[threadId] || {};
+}
+
+export function saveThreadBorders(threadId, borders) {
+  if (!threadId) return;
+  const all = readStored(BORDERS_KEY, {});
+  all[threadId] = borders || {};
+  writeStored(BORDERS_KEY, all);
+}
+
+// "Stumble — save a find" workflow. Items saved from the Promenade enter
+// the destination thread queued (flag: queued=true) rather than placed
+// in the orbit. They sit in a small dock until the owner "gives them
+// form" — at which point the flag is cleared and the orbital layout
+// picks them up like any other find.
+export function queueFindForThread(threadId, item) {
+  const existing = getThreadById(threadId);
+  if (!existing) return null;
+  const thread = JSON.parse(JSON.stringify(existing));
+  const ts = Date.now();
+  const find = {
+    id: `f-${ts}-q`,
+    t: item.title || '(untitled)',
+    s: item.source || '',
+    url: item.url || '',
+    i: glyphForMedia(item.mediaType),
+    d: 'just now',
+    mediaType: item.mediaType,
+    signal: 'queued',
+    pinnedSeed: true,
+    queued: true,
+    note: item.fromOwner
+      ? `Stumbled in from ${item.fromOwner}. Not yet placed.`
+      : 'Stumbled in. Not yet placed.',
+  };
+  thread.fl = [...(thread.fl || []), find];
+  thread.last = 'just now';
+  thread.finds = thread.fl.length;
+  thread._userCreated = true;
+  saveThread(thread);
+  return { thread, find };
+}
+
+// Move a queued find into the orbit. Clears the queued flag so the
+// spatial layout includes it on the next render.
+export function placeQueuedFind(threadId, findId) {
+  const existing = getThreadById(threadId);
+  if (!existing) return null;
+  const thread = JSON.parse(JSON.stringify(existing));
+  const find = (thread.fl || []).find(f => f.id === findId);
+  if (!find) return null;
+  delete find.queued;
+  if (find.signal === 'queued') find.signal = 'moved';
+  find.note = (find.note || '').replace(/Not yet placed\.?/i, 'Given form.').trim();
+  thread._userCreated = true;
+  saveThread(thread);
+  return { thread, find };
+}
+
+// Drop a queued find without placing it (the stumble didn't land).
+export function dismissQueuedFind(threadId, findId) {
+  const existing = getThreadById(threadId);
+  if (!existing) return null;
+  const thread = JSON.parse(JSON.stringify(existing));
+  thread.fl = (thread.fl || []).filter(f => f.id !== findId);
+  thread.finds = thread.fl.length;
+  thread._userCreated = true;
+  saveThread(thread);
+  return thread;
+}
+
+function glyphForMedia(mediaType) {
+  switch (mediaType) {
+    case 'video': case 'film':       return '▶';
+    case 'podcast': case 'interview':return '🎙';
+    case 'audio':                    return '🎙';
+    case 'image':                    return '📸';
+    case 'reddit':                   return '💬';
+    case 'paper':                    return '📄';
+    case 'book-chapter': case 'primer': return '📖';
+    case 'longform-article':         return '📰';
+    case 'essay':                    return '✎';
+    default:                          return '◻';
+  }
 }
 
 export function saveThread(thread) {
