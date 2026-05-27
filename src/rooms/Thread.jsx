@@ -1115,7 +1115,7 @@ function EtherTilePreview({ id, accent }) {
 // mosaic.userShapes.v1 on save.
 export function ShapeExtractor({ open, palette, onClose, onSaved }) {
   const [imageData, setImageData] = useStateT(null);
-  const [threshold, setThreshold] = useStateT(60);
+  const [threshold, setThreshold] = useStateT(90);
   const [epsilon, setEpsilon] = useStateT(1.5);
   const [name, setName] = useStateT('');
   const [extracted, setExtracted] = useStateT(null);
@@ -1125,7 +1125,7 @@ export function ShapeExtractor({ open, palette, onClose, onSaved }) {
 
   useEffect(() => {
     if (!open) {
-      setImageData(null); setThreshold(60); setEpsilon(1.5);
+      setImageData(null); setThreshold(90); setEpsilon(1.5);
       setName(''); setExtracted(null); setWorking(false);
     }
   }, [open]);
@@ -1257,11 +1257,28 @@ export function ShapeExtractor({ open, palette, onClose, onSaved }) {
                   fontFamily: MT, fontSize: 9, color: '#9A968F',
                   letterSpacing: '.1em', textTransform: 'uppercase',
                 }}>extracting…</span>
+              ) : imageData && extracted ? (
+                <>
+                  {/* Show the binary mask so the user can SEE what was
+                      classified as subject (black) vs background (white). */}
+                  {extracted.maskPreview && (
+                    <img src={extracted.maskPreview} alt=""
+                      style={{ width: '100%', height: '100%', objectFit: 'contain', opacity: 0.85 }}/>
+                  )}
+                  <div style={{
+                    position: 'absolute', left: 8, right: 8, bottom: 8,
+                    fontFamily: ST, fontStyle: 'italic', color: '#3A3530', fontSize: 11,
+                    textAlign: 'center', background: 'rgba(255,255,255,0.92)',
+                    padding: '5px 8px', borderRadius: 3,
+                    border: `1px solid ${accent}44`,
+                  }}>{extracted.coverage > 0.94
+                    ? 'almost everything counts as subject — try lowering the threshold'
+                    : extracted.coverage < 0.02
+                    ? 'almost nothing counts as subject — try raising the threshold'
+                    : 'detected blob too small — adjust the threshold to find your subject'}</div>
+                </>
               ) : imageData ? (
-                <span style={{
-                  fontFamily: ST, fontStyle: 'italic', color: '#9A968F', fontSize: 13,
-                  textAlign: 'center', padding: '0 14px',
-                }}>nothing found — try raising the threshold</span>
+                <span style={{ fontFamily: MT, fontSize: 9, color: '#9A968F' }}>warming up…</span>
               ) : (
                 <span style={{ fontFamily: MT, fontSize: 9, color: '#C0BDB6' }}>preview</span>
               )}
@@ -1270,15 +1287,15 @@ export function ShapeExtractor({ open, palette, onClose, onSaved }) {
               <div style={{
                 fontFamily: MT, fontSize: 8.5, color: '#9A968F',
                 letterSpacing: '.06em',
-              }}>{extracted.pointCount} points</div>
+              }}>{extracted.pointCount} points · {Math.round((extracted.coverage || 0) * 100)}% subject</div>
             )}
           </div>
         </div>
 
         <div style={{ marginTop: 16 }}>
           <SliderRow label="Background threshold" value={threshold}
-            min={10} max={180} step={2}
-            hint="raise for busier or coloured backgrounds"
+            min={10} max={200} step={2}
+            hint="lower if subject vanishes; raise if background bleeds in"
             onChange={setThreshold} disabled={!imageData}/>
           <SliderRow label="Smoothing" value={epsilon}
             min={0.5} max={6} step={0.1}

@@ -44,8 +44,11 @@ function drawToCanvas(img, size) {
   return { canvas, ctx };
 }
 
-// Sample 5x5 boxes from each corner; flatten into [[r,g,b], ...].
-function sampleCorners(data, W, H) {
+// Sample 5x5 boxes from each of 8 perimeter locations (4 corners + 4
+// edge midpoints), so a textured/gradient background gets represented
+// by several reference colours rather than only the corners. Returns
+// a flat [[r,g,b], ...] list.
+function samplePerimeter(data, W, H) {
   const samples = [];
   const add = (sx, sy) => {
     for (let dy = 0; dy < 5; dy++) {
@@ -57,14 +60,18 @@ function sampleCorners(data, W, H) {
       }
     }
   };
+  // 4 corners
   add(0, 0); add(W - 5, 0); add(0, H - 5); add(W - 5, H - 5);
+  // 4 edge midpoints
+  const mx = Math.floor(W / 2) - 2, my = Math.floor(H / 2) - 2;
+  add(mx, 0); add(mx, H - 5); add(0, my); add(W - 5, my);
   return samples;
 }
 
 // Build a binary mask: 1 = subject, 0 = background.
 function buildMask(imageData, threshold) {
   const { data, width, height } = imageData;
-  const samples = sampleCorners(data, width, height);
+  const samples = samplePerimeter(data, width, height);
   const t2 = threshold * threshold;
   const mask = new Uint8Array(width * height);
   for (let p = 0; p < width * height; p++) {
@@ -275,22 +282,47 @@ function renderPreview(pts) {
   return c.toDataURL();
 }
 
+// Render the current binary mask to a dataURL — useful diagnostic
+// when extraction returns empty (the user can see what the pipeline
+// is classifying as subject vs background).
+function renderMaskPreview(mask, W, H) {
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  const out = ctx.createImageData(W, H);
+  for (let i = 0; i < mask.length; i++) {
+    const v = mask[i] ? 26 : 255;
+    out.data[i * 4]     = v;
+    out.data[i * 4 + 1] = v;
+    out.data[i * 4 + 2] = v;
+    out.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(out, 0, 0);
+  return c.toDataURL();
+}
+
 // Top-level — run the whole pipeline on a data URL.
 //
-//   threshold: RGB-distance (0..255). Higher = more aggressive bg
-//              removal. Default ~60 works for white/uniform bgs;
-//              you'll want to push higher (90–130) for busy bgs.
+//   threshold: RGB-distance (0..255). Higher = more bg pixels (busier
+//              backgrounds need higher). Lower = strict matching (only
+//              near-identical bg colors collapse). 90 is a balanced
+//              default that handles most real photos.
 //   epsilon:   Douglas-Peucker tolerance in pixel units. ~1.5 is a
 //              good default; raise to 3 for chunkier shapes.
-export async function extractShape(dataUrl, { threshold = 60, epsilon = 1.5 } = {}) {
+export async function extractShape(dataUrl, { threshold = 90, epsilon = 1.5 } = {}) {
   const img = await loadImage(dataUrl);
   const { canvas, ctx } = drawToCanvas(img, PROC);
   const imageData = ctx.getImageData(0, 0, PROC, PROC);
-  let mask = buildMask(imageData, threshold);
-  mask = labelComponents(mask, PROC, PROC);
+  const rawMask = buildMask(imageData, threshold);
+  const subjectPixels = rawMask.reduce((n, v) => n + v, 0);
+  const coverage = subjectPixels / rawMask.length;
+  // Diagnostic mask preview always available so the modal can show
+  // the user what was detected when no contour is produced.
+  const maskPreview = renderMaskPreview(rawMask, PROC, PROC);
+  let mask = labelComponents(new Uint8Array(rawMask), PROC, PROC);
   const contour = traceContour(mask, PROC, PROC);
   if (contour.length < 8) {
-    return { path: '', points: [], preview: '', empty: true };
+    return { path: '', points: [], preview: '', empty: true, coverage, maskPreview };
   }
   const simplified = simplifyDP(contour, epsilon);
   const normalized = normalize(simplified, PROC, PROC);
@@ -299,5 +331,7 @@ export async function extractShape(dataUrl, { threshold = 60, epsilon = 1.5 } = 
     points: normalized,
     preview: renderPreview(normalized),
     pointCount: normalized.length,
+    coverage,
+    maskPreview,
   };
 }
