@@ -31,7 +31,7 @@ import { Thumbnail } from './PromenadeThumbnail.jsx';
 // is set to 'none' so the path stretches to whatever rectangle the card
 // occupies — a hex on a wide card reads as a wide hex. 'rect' is the
 // default (no overlay).
-const SHAPE_DEFS = {
+export const SHAPE_DEFS = {
   rect:    { label: 'Rectangle', coiner: null, path: null },
   circle:  { label: 'Circle',    coiner: null, path: 'M50 2 a48 48 0 1 0 0 96 a48 48 0 1 0 0 -96 Z' },
   hex:     { label: 'Hexagon',   coiner: null, path: 'M50 4 L92 27 L92 73 L50 96 L8 73 L8 27 Z' },
@@ -51,11 +51,11 @@ const SHAPE_DEFS = {
              // Trefoil-ish overlapping loops, drawn as a stylised path.
              path: 'M50 8 C70 8 88 22 84 50 C80 78 60 92 50 92 C40 92 20 78 16 50 C12 22 30 8 50 8 M30 36 Q50 50 70 36 M30 64 Q50 50 70 64' },
 };
-const STARTER_SHAPES   = ['rect','circle','hex','soft-hex','oval','square','triangle','diamond'];
-const COMMUNITY_SHAPES = ['octagon','rosette','knot'];
+export const STARTER_SHAPES   = ['rect','circle','hex','soft-hex','oval','square','triangle','diamond'];
+export const COMMUNITY_SHAPES = ['octagon','rosette','knot'];
 
 // ── Border library — color & thickness for a single card's outline ──
-const BORDER_COLORS = [
+export const BORDER_COLORS = [
   { id: 'ink',       label: 'Ink',       value: '#1A1714' },
   { id: 'terracotta',label: 'Terracotta',value: '#B25C2E' },
   { id: 'sand',      label: 'Sand',      value: '#C4B79F' },
@@ -64,7 +64,7 @@ const BORDER_COLORS = [
   { id: 'brown',     label: 'Brown',     value: '#7A4A2A' },
   { id: 'paper',     label: 'Paper',     value: '#EDEAE1' },
 ];
-const BORDER_THICKNESSES = [
+export const BORDER_THICKNESSES = [
   { id: 'hair',  label: 'Hair',   px: 0.75 },
   { id: 'thin',  label: 'Thin',   px: 1.5 },
   { id: 'med',   label: 'Medium', px: 2.5 },
@@ -75,7 +75,7 @@ const BORDER_THICKNESSES = [
 // Each preset renders an SVG layer sized to the canvas. Uploaded images
 // short-circuit via { kind: 'image', dataUrl }. coiner is shown on the
 // tile when present.
-const ETHER_PRESETS = [
+export const ETHER_PRESETS = [
   { id: 'plain',       label: 'Plain',       coiner: null },
   { id: 'dots',        label: 'Dots',        coiner: null },
   { id: 'lines',       label: 'Lines',       coiner: null },
@@ -90,7 +90,7 @@ const ETHER_PRESETS = [
 // Patterns and uploaded images both behave as wallpaper — they don't
 // pan or zoom with the canvas, so the chosen background fills the room
 // regardless of where the user has scrolled or zoomed to.
-function EtherLayer({ ether, accent }) {
+export function EtherLayer({ ether, accent }) {
   if (!ether) return null;
   if (ether.kind === 'image') {
     return (
@@ -691,7 +691,7 @@ function TimelineScrubber({ markers, oldestDays, onScrub, label = "thread time" 
 // Design panel — unified surface for the design tools (Rearrange,
 // Shape, Border, Ether). Sits in the top-left chrome below the View
 // Mode toggle.
-function DesignPanel({
+export function DesignPanel({
   mode, onSwitch, palette,
   layoutDirty, shapesDirty, bordersDirty, etherDirty,
   onLockLayout, onLockShapes, onLockBorders, onLockEther,
@@ -873,7 +873,7 @@ function DesignPanel({
 }
 
 // Two-row library: color swatches above, thickness rules below.
-function BorderLibrary({ palette, disabled, current, onPickColor, onPickThickness }) {
+export function BorderLibrary({ palette, disabled, current, onPickColor, onPickThickness }) {
   const wrapDim = disabled ? { opacity: 0.5, pointerEvents: 'none' } : null;
   return (
     <div style={wrapDim}>
@@ -922,7 +922,7 @@ function BorderLibrary({ palette, disabled, current, onPickColor, onPickThicknes
 }
 
 // Ether library: preset tiles + upload tile.
-function EtherLibrary({ palette, current, onPick, onUpload }) {
+export function EtherLibrary({ palette, current, onPick, onUpload }) {
   const fileInputRef = useRef(null);
   const onFileChange = (e) => {
     const file = e.target.files && e.target.files[0];
@@ -1042,7 +1042,7 @@ function EtherTilePreview({ id, accent }) {
 // Mini visual catalogue from the shape library. Renders 7 starter shapes
 // + 3 community-coined, plus an inert "draw your own / import" tile that
 // reads as a coming-soon affordance.
-function ShapeLibrary({ palette, disabled, current, onPick }) {
+export function ShapeLibrary({ palette, disabled, current, onPick }) {
   const TileGrid = ({ ids, dim }) => (
     <div style={{
       display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6,

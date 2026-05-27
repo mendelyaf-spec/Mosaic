@@ -12,9 +12,28 @@ import {
   ZOOM_DEFAULT,
 } from '../shell/shell.jsx';
 import { WM } from '../data/wm-data.js';
-import { getAllThreads, getThreadById, deleteThread } from '../lib/threads.js';
+import {
+  getAllThreads, getThreadById, deleteThread,
+  loadHomeLayout, saveHomeLayout,
+  loadHomeShapes, saveHomeShapes,
+  loadHomeBorders, saveHomeBorders,
+  loadHomeEther, saveHomeEther,
+} from '../lib/threads.js';
+import {
+  DesignPanel, EtherLayer, SHAPE_DEFS,
+} from './Thread.jsx';
 
-function ThreadCluster({ thread, pos, onOpen, onDelete, centerAnchor = false }) {
+function ThreadCluster({
+  thread, pos, onOpen, onDelete, centerAnchor = false,
+  // Design-mode props — when undefined, the cluster behaves as before.
+  editMode = 'off',          // 'off' | 'rearrange' | 'shape' | 'border'
+  zoom = 1,
+  shapeId = 'rect',
+  borderOverride = null,
+  selected = false,
+  onMove,                    // (threadId, { x, y }) => void
+  onSelect,                  // (threadId) => void
+}) {
   const pal = WM.DOMAIN[thread.dc];
   const [hover, setHover] = useStateH(false);
   const [showReframes, setShowReframes] = useStateH(false);
@@ -28,25 +47,60 @@ function ThreadCluster({ thread, pos, onOpen, onDelete, centerAnchor = false }) 
                    : thread.state === "spawned" ? "newly spawned"
                    : "resting";
 
-  // Track mousedown→mouseup ourselves; the parent canvas's pan-detection
-  // can otherwise eat the synthesized click on transformed elements.
-  const downRef = React.useRef({ x: 0, y: 0, t: 0 });
-  // Stop a click from bubbling to the card (which would navigate).
+  // Drag state for Move mode. Track screen deltas, convert to canvas
+  // coords via zoom. In Shape/Border mode the click selects the cluster.
+  const downRef = React.useRef({ x: 0, y: 0, t: 0, ox: 0, oy: 0, dragging: false });
   const swallow = (e) => { e.stopPropagation(); };
+
+  const onPointerDown = (e) => {
+    downRef.current = {
+      x: e.clientX, y: e.clientY, t: Date.now(),
+      ox: pos.x, oy: pos.y,
+      dragging: editMode === 'rearrange',
+    };
+    if (editMode === 'rearrange') {
+      e.stopPropagation();
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    }
+  };
+  const onPointerMove = (e) => {
+    if (!downRef.current.dragging) return;
+    const dx = (e.clientX - downRef.current.x) / Math.max(0.0001, zoom);
+    const dy = (e.clientY - downRef.current.y) / Math.max(0.0001, zoom);
+    if (onMove) onMove(thread.id, { x: downRef.current.ox + dx, y: downRef.current.oy + dy });
+  };
+  const onPointerUp = (e) => {
+    const d = downRef.current;
+    const dx = e.clientX - d.x, dy = e.clientY - d.y;
+    const moved = Math.hypot(dx, dy);
+    downRef.current.dragging = false;
+    if (editMode === 'rearrange') return; // suppress click after drag
+    if (moved < 6 && Date.now() - d.t < 600) {
+      if (editMode === 'shape' || editMode === 'border') {
+        onSelect && onSelect(thread.id);
+      } else {
+        onOpen(thread);
+      }
+    }
+  };
+
+  const shaped = shapeId && shapeId !== 'rect';
+  const bColor = borderOverride?.color;
+  const bPx    = borderOverride?.thickness;
+  const customBorder = !!(bColor || bPx);
   return (
     <div data-card
-         onMouseDown={e => { downRef.current = { x: e.clientX, y: e.clientY, t: Date.now() }; }}
-         onMouseUp={e => {
-           const d = downRef.current;
-           const dx = e.clientX - d.x, dy = e.clientY - d.y;
-           if (Math.hypot(dx, dy) < 6 && Date.now() - d.t < 600) onOpen(thread);
-         }}
+         onPointerDown={onPointerDown}
+         onPointerMove={onPointerMove}
+         onPointerUp={onPointerUp}
+         onPointerCancel={() => { downRef.current.dragging = false; }}
          onMouseEnter={() => setHover(true)}
          onMouseLeave={() => setHover(false)}
          style={{
       position: "absolute", left: pos.x, top: pos.y,
-      width: 380, cursor: "pointer",
+      width: 380, cursor: editMode === 'rearrange' ? 'grab' : 'pointer',
       transition: "transform .25s cubic-bezier(.4,0,.2,1)",
+      touchAction: editMode === 'rearrange' ? 'none' : 'auto',
       transform: centerAnchor
         ? (hover ? "translate(-50%, calc(-50% - 3px))" : "translate(-50%, -50%)")
         : (hover ? "translateY(-3px)" : "translateY(0)"),
@@ -137,14 +191,34 @@ function ThreadCluster({ thread, pos, onOpen, onDelete, centerAnchor = false }) 
 
       <div style={{
         position: "relative",
-        background: pal.bg, borderRadius: 10,
+        background: shaped ? "transparent" : pal.bg,
+        borderRadius: shaped ? 0 : 10,
         padding: "16px 20px",
-        border: `1.5px solid ${pal.accent}28`,
-        boxShadow: hover
+        border: shaped
+          ? "1.5px solid transparent"
+          : (customBorder
+              ? `${bPx || 1.5}px solid ${bColor || pal.accent}`
+              : `1.5px solid ${pal.accent}28`),
+        boxShadow: shaped ? "none" : (hover
           ? `0 8px 32px ${pal.accent}1c`
-          : `0 2px 14px ${pal.accent}0c`,
+          : `0 2px 14px ${pal.accent}0c`),
         transition: "box-shadow .25s",
+        outline: selected ? `2px solid ${pal.accent}` : 'none',
+        outlineOffset: selected ? 6 : 0,
       }}>
+        {shaped && (
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none"
+            style={{
+              position: 'absolute', left: 0, top: 0,
+              width: '100%', height: '100%',
+              pointerEvents: 'none', overflow: 'visible',
+            }}>
+            <path d={SHAPE_DEFS[shapeId].path} fill="none"
+              stroke={customBorder ? (bColor || pal.accent) : (pal.accent + 'AA')}
+              strokeWidth={customBorder ? (bPx || 1.6) : 1.6}
+              vectorEffect="non-scaling-stroke" />
+          </svg>
+        )}
         {onDelete && (
           <button
             title="Delete this thread"
@@ -274,6 +348,52 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
     deleteThread(thread.id);
     setVersion(v => v + 1);
   };
+
+  // ── Home design state (mirrors Thread.jsx) ────────────────────────
+  // designMode: 'off' | 'rearrange' | 'shape' | 'border' | 'ether'
+  const [designMode, setDesignMode] = useStateH('off');
+  const [savedHomeLayout,  setSavedHomeLayout]  = useStateH(() => loadHomeLayout());
+  const [homeLayoutEdit,   setHomeLayoutEdit]   = useStateH(savedHomeLayout);
+  const [savedHomeShapes,  setSavedHomeShapes]  = useStateH(() => loadHomeShapes());
+  const [homeShapesEdit,   setHomeShapesEdit]   = useStateH(savedHomeShapes);
+  const [savedHomeBorders, setSavedHomeBorders] = useStateH(() => loadHomeBorders());
+  const [homeBordersEdit,  setHomeBordersEdit]  = useStateH(savedHomeBorders);
+  const [savedHomeEther,   setSavedHomeEther]   = useStateH(() => loadHomeEther());
+  const [homeEtherEdit,    setHomeEtherEdit]    = useStateH(savedHomeEther);
+  const [selectedClusterId, setSelectedClusterId] = useStateH(null);
+  const [canvasZoom, setCanvasZoom] = useStateH(ZOOM_DEFAULT);
+  const layoutDirty  = designMode === 'rearrange' && JSON.stringify(homeLayoutEdit)  !== JSON.stringify(savedHomeLayout);
+  const shapesDirty  = designMode === 'shape'     && JSON.stringify(homeShapesEdit)  !== JSON.stringify(savedHomeShapes);
+  const bordersDirty = designMode === 'border'    && JSON.stringify(homeBordersEdit) !== JSON.stringify(savedHomeBorders);
+  const etherDirty   = designMode === 'ether'     && JSON.stringify(homeEtherEdit)   !== JSON.stringify(savedHomeEther);
+  const enterMode = (m) => {
+    setHomeLayoutEdit(savedHomeLayout);
+    setHomeShapesEdit(savedHomeShapes);
+    setHomeBordersEdit(savedHomeBorders);
+    setHomeEtherEdit(savedHomeEther);
+    setSelectedClusterId(null);
+    setDesignMode(m);
+  };
+  const exitDesign = () => { enterMode('off'); };
+  const lockLayout  = () => { saveHomeLayout(homeLayoutEdit);   setSavedHomeLayout(homeLayoutEdit);   setDesignMode('off'); };
+  const lockShapes  = () => { saveHomeShapes(homeShapesEdit);   setSavedHomeShapes(homeShapesEdit);   setSelectedClusterId(null); setDesignMode('off'); };
+  const lockBorders = () => { saveHomeBorders(homeBordersEdit); setSavedHomeBorders(homeBordersEdit); setSelectedClusterId(null); setDesignMode('off'); };
+  const lockEther   = () => { saveHomeEther(homeEtherEdit);     setSavedHomeEther(homeEtherEdit);     setDesignMode('off'); };
+  const resetLayout  = () => setHomeLayoutEdit({});
+  const resetShapes  = () => { setHomeShapesEdit({}); setSelectedClusterId(null); };
+  const resetBorders = () => { setHomeBordersEdit({}); setSelectedClusterId(null); };
+  const resetEther   = () => setHomeEtherEdit(null);
+  const setClusterPos    = (tid, p) => setHomeLayoutEdit(prev => ({ ...prev, [tid]: p }));
+  const setClusterShape  = (tid, s) => setHomeShapesEdit(prev => {
+    const next = { ...prev };
+    if (!s || s === 'rect') delete next[tid]; else next[tid] = s;
+    return next;
+  });
+  const setClusterBorderColor     = (color)     => selectedClusterId && setHomeBordersEdit(prev => ({ ...prev, [selectedClusterId]: { ...(prev[selectedClusterId] || {}), color } }));
+  const setClusterBorderThickness = (thickness) => selectedClusterId && setHomeBordersEdit(prev => ({ ...prev, [selectedClusterId]: { ...(prev[selectedClusterId] || {}), thickness } }));
+  // The "Maya" persona accent — used for the design panel highlights on
+  // Home (no per-thread palette at the page level).
+  const homePalette = { accent: '#1A5C46', bg: '#FAF5E9' };
 
   // Per-thread activity weight per period — 1 = bright, 0 = dim out.
   // Hand-tuned from each thread's `last` timestamp + mile-marker dates.
@@ -859,13 +979,56 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
   }
 
   // ============ SPATIAL VIEW ============
+  const hasEther = !!homeEtherEdit;
+  const designButton = (
+    <div data-ui style={{ position: "fixed", top: 24, right: 24, zIndex: 21 }}>
+      {designMode === 'off' && (
+        <button onClick={() => enterMode('rearrange')} style={{
+          fontSize: 10, fontWeight: 500, padding: "4px 10px",
+          borderRadius: 9, cursor: "pointer", fontFamily: FH,
+          border: `1px solid ${homePalette.accent}66`,
+          background: "rgba(255,255,255,.85)", color: homePalette.accent,
+        }} title="Rearrange, shape, or design the constellation">✦ Design</button>
+      )}
+      {designMode !== 'off' && (
+        <DesignPanel
+          mode={designMode}
+          onSwitch={(next) => enterMode(next)}
+          palette={homePalette}
+          layoutDirty={layoutDirty}
+          shapesDirty={shapesDirty}
+          bordersDirty={bordersDirty}
+          etherDirty={etherDirty}
+          onLockLayout={lockLayout}
+          onLockShapes={lockShapes}
+          onLockBorders={lockBorders}
+          onLockEther={lockEther}
+          onResetLayout={resetLayout}
+          onResetShapes={resetShapes}
+          onResetBorders={resetBorders}
+          onResetEther={resetEther}
+          onExit={exitDesign}
+          selectedCardKey={selectedClusterId}
+          currentShapeForSelected={selectedClusterId ? (homeShapesEdit[selectedClusterId] || 'rect') : null}
+          currentBorderForSelected={selectedClusterId ? (homeBordersEdit[selectedClusterId] || null) : null}
+          onPickShape={(s) => selectedClusterId && setClusterShape(selectedClusterId, s)}
+          onPickBorderColor={setClusterBorderColor}
+          onPickBorderThickness={setClusterBorderThickness}
+          currentEther={homeEtherEdit}
+          onPickEther={(e) => setHomeEtherEdit(e)}
+          onUploadEther={(e) => setHomeEtherEdit(e)} />
+      )}
+    </div>
+  );
   return (
     <>
+    <EtherLayer ether={homeEtherEdit} accent={homePalette.accent} />
     <PZCH
       canvasW={canvasW} canvasH={canvasH}
-      background="#F2EFE6"
+      background={hasEther ? "transparent" : "#F2EFE6"}
+      showGround={!hasEther}
       panHint="drag · wheel zoom · click a thread to enter"
-      onPanZoom={({ zoom: z }) => setZoom(z)}
+      onPanZoom={({ zoom: z }) => { setZoom(z); setCanvasZoom(z); }}
       overlay={
         <>
           {identityCard}
@@ -873,6 +1036,7 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
           {courtyardsPanel}
           {apertures.map((a, i) => <ApertureH key={i} {...a} />)}
           {breadcrumb}
+          {designButton}
         </>
       }>
       {({ zoom: zz }) => (
@@ -982,13 +1146,24 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
                 return { x: 360 + col * 460, y: 1320 + row * 360 };
               })();
             }
+            // Apply Home-design overrides on top of the algorithmic layout.
+            const ovPos = homeLayoutEdit[t.id];
+            if (ovPos) { pos = ovPos; centerAnchor = false; }
+            const designOpacity = designMode !== 'off';
             return (
               <div key={t.id} style={{
-                opacity: a < 0.3 ? 0.28 : a < 0.7 ? 0.6 : 1,
-                filter: a < 0.3 ? "saturate(.4)" : a < 0.7 ? "saturate(.75)" : "none",
+                opacity: designOpacity ? 1 : (a < 0.3 ? 0.28 : a < 0.7 ? 0.6 : 1),
+                filter: designOpacity ? 'none' : (a < 0.3 ? "saturate(.4)" : a < 0.7 ? "saturate(.75)" : "none"),
                 transition: "opacity .4s, filter .4s",
               }}>
                 <ThreadCluster thread={t} pos={pos} centerAnchor={centerAnchor}
+                  editMode={designMode}
+                  zoom={canvasZoom}
+                  shapeId={homeShapesEdit[t.id] || 'rect'}
+                  borderOverride={homeBordersEdit[t.id] || null}
+                  selected={(designMode === 'shape' || designMode === 'border') && selectedClusterId === t.id}
+                  onMove={setClusterPos}
+                  onSelect={setSelectedClusterId}
                   onOpen={th => openThread(th.id)}
                   onDelete={handleDelete} />
               </div>

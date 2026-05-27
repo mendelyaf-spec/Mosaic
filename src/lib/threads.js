@@ -127,6 +127,26 @@ export function saveThreadBorders(threadId, borders) {
   writeStored(BORDERS_KEY, all);
 }
 
+// Home-scoped design — the constellation page itself. Same four
+// dimensions as the thread-scoped design (layout, shapes, borders,
+// ether), but the keys are thread-ids on Home (each cluster on the
+// Home canvas is one thread). One ether per Home (single background).
+const HOME_LAYOUT_KEY  = 'mosaic.homeLayout.v1';
+const HOME_SHAPES_KEY  = 'mosaic.homeShapes.v1';
+const HOME_BORDERS_KEY = 'mosaic.homeBorders.v1';
+const HOME_ETHER_KEY   = 'mosaic.homeEther.v1';
+
+export function loadHomeLayout()  { return readStored(HOME_LAYOUT_KEY,  {}); }
+export function saveHomeLayout(v) { writeStored(HOME_LAYOUT_KEY,  v || {}); }
+export function loadHomeShapes()  { return readStored(HOME_SHAPES_KEY,  {}); }
+export function saveHomeShapes(v) { writeStored(HOME_SHAPES_KEY,  v || {}); }
+export function loadHomeBorders() { return readStored(HOME_BORDERS_KEY, {}); }
+export function saveHomeBorders(v){ writeStored(HOME_BORDERS_KEY, v || {}); }
+export function loadHomeEther()   { return readStored(HOME_ETHER_KEY,   null); }
+export function saveHomeEther(v) {
+  writeStored(HOME_ETHER_KEY, v || null);
+}
+
 // "Stumble — save a find" workflow. Items saved from the Promenade enter
 // the destination thread queued (flag: queued=true) rather than placed
 // in the orbit. They sit in a small dock until the owner "gives them
