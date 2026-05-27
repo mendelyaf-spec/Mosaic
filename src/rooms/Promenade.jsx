@@ -426,6 +426,17 @@ function FocusCard({ item, ownCourtyards, onAction, navigate, onPrev, onNext, po
               navigate('thread', { id: spawned.id });
             }
           }} style={ghostBtn()}>spawn a new thread →</button>
+          <button onClick={() => {
+            navigate('search', {
+              deepen: JSON.stringify({
+                t: item.title,
+                s: item.source || (isNote ? `note from ${item.owner}` : ''),
+                url: item.url || '',
+                mediaType: isNote ? (item.noteType || 'note') : 'find',
+                fromOwner: item.owner,
+              }),
+            });
+          }} style={secondaryBtn()}>go deeper (DOS) →</button>
         </div>
 
         {savedTo && (

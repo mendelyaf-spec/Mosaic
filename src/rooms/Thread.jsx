@@ -1843,6 +1843,7 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
   const [activeCard, setActiveCard] = useStateT(null); // {kind:'find'|'note', data}
   const [noteDraft, setNoteDraft] = useStateT(null); // string while editing a find's note, else null
   const [spawnDraft, setSpawnDraft] = useStateT(null); // string while naming a thread spawned off a card, else null
+  const [eventDraft, setEventDraft] = useStateT(null); // { kind, when, note } while composing an event proposal off a card, else null
   const [savedMsg, setSavedMsg] = useStateT(null);   // confirmation after saving/spawning off a foreign card
   const canEdit = isOwnThread(thread.id); // can't annotate someone else's thread
   const myThreads = getAllThreads().filter(t => isOwnThread(t.id));
@@ -2223,7 +2224,120 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
   const cardOverlay = (() => {
     if (!activeCard) return null;
     const { kind, data } = activeCard;
-    const close = () => { setActiveCard(null); setNoteDraft(null); setSpawnDraft(null); setSavedMsg(null); };
+    const close = () => { setActiveCard(null); setNoteDraft(null); setSpawnDraft(null); setEventDraft(null); setSavedMsg(null); };
+
+    // Two actions available on EVERY card overlay regardless of card kind:
+    // - "go deeper (DOS)" → opens the Search room seeded with this card
+    // - "propose an event" → opens an inline composer to ask the owner
+    //                         for a live or async meeting. Only shows when
+    //                         the card belongs to someone else (!canEdit).
+    //                         "No events if it's your own card."
+    // `item` is the normalized card { title, source, url, mediaType }.
+    const extraActions = (item) => (
+      <>
+        <div style={{
+          marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap",
+        }}>
+          <button onClick={() => navigate("search", {
+            from: thread.id,
+            deepen: JSON.stringify({
+              t: item.title, s: item.source, url: item.url, mediaType: item.mediaType,
+              fromOwner: isOwnThread(thread.id) ? null : (thread.owner || null),
+            }),
+          })} style={{
+            fontFamily: MT, fontSize: 10, letterSpacing: ".12em",
+            textTransform: "uppercase", color: palette.accent,
+            background: "transparent", border: `1px solid ${palette.accent}55`,
+            padding: "7px 12px", borderRadius: 3, cursor: "pointer",
+          }}>go deeper (DOS) →</button>
+          {!canEdit && (
+            <button onClick={() => setEventDraft({ kind: "live", when: "", note: "" })}
+              disabled={!!eventDraft}
+              style={{
+                fontFamily: MT, fontSize: 10, letterSpacing: ".12em",
+                textTransform: "uppercase",
+                color: eventDraft ? "#9A968F" : palette.accent,
+                background: "transparent",
+                border: `1px solid ${eventDraft ? "rgba(26,23,20,.15)" : palette.accent + "55"}`,
+                padding: "7px 12px", borderRadius: 3,
+                cursor: eventDraft ? "default" : "pointer",
+              }}>
+              {eventDraft ? "composing event…" : "propose an event →"}
+            </button>
+          )}
+        </div>
+        {eventDraft && (
+          <div style={{
+            marginTop: 12, padding: "14px 16px",
+            background: "#FBF8F0",
+            border: `1px solid ${palette.accent}55`,
+            borderRadius: 4,
+          }}>
+            <div style={{
+              fontFamily: MT, fontSize: 9, letterSpacing: ".18em",
+              textTransform: "uppercase", color: palette.accent, marginBottom: 10,
+            }}>propose an event to {(thread.owner || "the owner").split(" ")[0]}</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <select
+                value={eventDraft.kind}
+                onChange={e => setEventDraft({ ...eventDraft, kind: e.target.value })}
+                style={{
+                  fontFamily: FT, fontSize: 12, padding: "6px 8px",
+                  border: "1px solid rgba(26,23,20,.15)", borderRadius: 3,
+                  background: "#FFFFFF", color: "#1A1714",
+                }}>
+                <option value="live">live</option>
+                <option value="async">async (over a week)</option>
+              </select>
+              <input
+                placeholder="suggested when (e.g. Thursday 4pm)"
+                value={eventDraft.when}
+                onChange={e => setEventDraft({ ...eventDraft, when: e.target.value })}
+                style={{
+                  flex: 1, fontFamily: FT, fontSize: 12,
+                  padding: "6px 10px", border: "1px solid rgba(26,23,20,.15)",
+                  borderRadius: 3, background: "#FFFFFF",
+                }} />
+            </div>
+            <textarea
+              placeholder="why this — one line is fine"
+              value={eventDraft.note}
+              onChange={e => setEventDraft({ ...eventDraft, note: e.target.value })}
+              rows={2}
+              style={{
+                width: "100%", boxSizing: "border-box",
+                fontFamily: FT, fontSize: 12, lineHeight: 1.4,
+                padding: "8px 10px", border: "1px solid rgba(26,23,20,.15)",
+                borderRadius: 3, background: "#FFFFFF", resize: "vertical",
+              }} />
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button
+                onClick={() => {
+                  const who = (thread.owner || "the owner").split(" ")[0];
+                  const kind = eventDraft.kind === "async" ? "an async exchange" : "a live meeting";
+                  const when = eventDraft.when ? ` — ${eventDraft.when}` : "";
+                  setSavedMsg(`Proposed ${kind} to ${who}${when}. Request sent.`);
+                  setEventDraft(null);
+                }}
+                style={{
+                  fontFamily: MT, fontSize: 10, letterSpacing: ".12em",
+                  textTransform: "uppercase", color: "#FAF5E9",
+                  background: palette.accent, border: "none",
+                  padding: "7px 14px", borderRadius: 3, cursor: "pointer",
+                }}>send proposal</button>
+              <button
+                onClick={() => setEventDraft(null)}
+                style={{
+                  fontFamily: MT, fontSize: 10, letterSpacing: ".12em",
+                  textTransform: "uppercase", color: "#5E5A55",
+                  background: "transparent", border: "1px solid rgba(26,23,20,.15)",
+                  padding: "7px 14px", borderRadius: 3, cursor: "pointer",
+                }}>cancel</button>
+            </div>
+          </div>
+        )}
+      </>
+    );
 
     // Thread actions for a card on someone else's thread — save it into one
     // of your threads, or spawn a brand-new thread off it. Neither requires
@@ -2452,22 +2566,10 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
                       cursor: canEdit ? "pointer" : "default",
                       opacity: canEdit ? 1 : 0.4,
                     }}>{data.note ? "edit your note" : "add a note on this"}</button>
-                  <button onClick={() => navigate("search", {
-                    from: thread.id,
-                    // JSON-encoded: the hash router stringifies object params.
-                    deepen: JSON.stringify({
-                      t: data.t, s: data.s, url: data.url, mediaType: data.mediaType,
-                      // Crediting the owner when this is someone else's thread
-                      // you've walked into from the courtyard — not your own.
-                      fromOwner: isOwnThread(thread.id) ? null : (thread.owner || null),
-                    }),
-                  })} style={{
-                    fontFamily: MT, fontSize: 10, letterSpacing: ".12em",
-                    textTransform: "uppercase", color: palette.accent,
-                    background: "transparent", border: `1px solid ${palette.accent}55`,
-                    padding: "7px 12px", borderRadius: 3, cursor: "pointer",
-                  }}>go deeper (DOS) →</button>
                 </div>
+                {extraActions({
+                  title: data.t, source: data.s, url: data.url, mediaType: data.mediaType,
+                })}
                 {!canEdit && threadActions({
                   title: data.t, source: data.s, url: data.url, mediaType: data.mediaType,
                 })}
@@ -2571,6 +2673,12 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
                   fontWeight: 300, lineHeight: 1.45, color: "#1A1714",
                   margin: 0, textWrap: "pretty",
                 }}>"{data.cap}"</p>
+                {extraActions({
+                  title: data.cap,
+                  source: `${data.type} note${data.dur ? ` · ${data.dur}` : ""}`,
+                  url: "",
+                  mediaType: data.type,
+                })}
                 {!canEdit && threadActions({
                   title: data.cap,
                   source: `${data.type} note${data.dur ? ` · ${data.dur}` : ""}`,
@@ -2601,6 +2709,9 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
                     ? "A turn in how the question got asked."
                     : `A turn in how ${thread.owner || "they"} asked it. If it opens something for you, take it up as your own thread.`}
                 </div>
+                {extraActions({
+                  title: data.q, source: "", url: "", mediaType: "reframe",
+                })}
                 {!canEdit && threadActions(
                   { title: data.q, source: "", url: "", mediaType: "reframe" },
                   { saveable: false },
