@@ -243,11 +243,14 @@ function traceContour(mask, W, H) {
   const maxSteps = W * H * 4;
   for (let step = 0; step < maxSteps; step++) {
     points.push({ x: cx, y: cy });
-    // Search neighbours starting from the one to the LEFT of where we
-    // came from (entryDir - 2), going clockwise.
+    // Search neighbours clockwise starting from one position past the
+    // entry direction. Looking at entryDir itself would let us walk
+    // straight back to the previous pixel — Moore-Neighbour requires
+    // skipping it. The first subject neighbour found becomes the next
+    // boundary pixel.
     let nextDir = -1;
     for (let i = 0; i < 8; i++) {
-      const d = (entryDir + 6 + i) % 8;
+      const d = (entryDir + 1 + i) % 8;
       const nx = cx + dx[d], ny = cy + dy[d];
       if (isSubject(nx, ny)) { nextDir = d; break; }
     }
