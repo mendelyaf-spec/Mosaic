@@ -1247,11 +1247,18 @@ export function ShapeExtractor({ open, palette, onClose, onSaved }) {
               overflow: 'hidden', position: 'relative', marginBottom: 8,
             }}>
               {extracted && extracted.path && !extracted.empty ? (
-                <svg viewBox="0 0 100 100" width="100%" height="100%">
-                  <path d={extracted.path} fill={accent + '22'} stroke={accent}
-                    strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round"
-                    vectorEffect="non-scaling-stroke"/>
-                </svg>
+                extracted.preview ? (
+                  <img src={extracted.preview} alt=""
+                    style={{
+                      maxWidth: '100%', maxHeight: '100%', objectFit: 'contain',
+                    }}/>
+                ) : (
+                  <svg viewBox="0 0 100 100" width="100%" height="100%">
+                    <path d={extracted.path} fill={accent + '22'} stroke={accent}
+                      strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round"
+                      vectorEffect="non-scaling-stroke"/>
+                  </svg>
+                )
               ) : working ? (
                 <span style={{
                   fontFamily: MT, fontSize: 9, color: '#9A968F',
@@ -1412,13 +1419,22 @@ export function ShapeLibrary({
           border: `1px solid ${isCurrent ? palette.accent : 'rgba(26,23,20,.10)'}`,
           borderRadius: 4, cursor: "pointer",
           display: "flex", alignItems: "center", justifyContent: "center",
+          overflow: 'hidden',
         }}>
-          <svg viewBox="0 0 100 100" width={28} height={28} style={{ display: 'block' }}>
-            <path d={shape.path} fill="none"
-              stroke={isCurrent ? palette.accent : '#5E5A55'}
-              strokeWidth={3}
-              strokeLinejoin="round" strokeLinecap="round" />
-          </svg>
+          {shape.preview ? (
+            <img src={shape.preview} alt={shape.label || 'shape'}
+              style={{
+                maxWidth: '88%', maxHeight: '88%', objectFit: 'contain',
+                display: 'block',
+              }}/>
+          ) : (
+            <svg viewBox="0 0 100 100" width={28} height={28} style={{ display: 'block' }}>
+              <path d={shape.path} fill="none"
+                stroke={isCurrent ? palette.accent : '#5E5A55'}
+                strokeWidth={3}
+                strokeLinejoin="round" strokeLinecap="round" />
+            </svg>
+          )}
         </button>
         {onDeleteUserShape && (
           <button

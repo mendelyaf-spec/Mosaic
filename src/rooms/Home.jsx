@@ -33,11 +33,22 @@ function ThreadCluster({
   zoom = 1,
   shapeId = 'rect',
   shapeScale = 1,
+  userShapes = [],
   borderOverride = null,
   selected = false,
   onMove,                    // (threadId, { x, y }) => void
   onSelect,                  // (threadId) => void
 }) {
+  // Resolve the shape path from either the built-in SHAPE_DEFS map or
+  // the user's own extracted shapes. Falls back to null (no shape) when
+  // the id matches neither — protects against the previous crash where
+  // SHAPE_DEFS[userShapeId] was undefined.
+  const shapeDef = (() => {
+    if (!shapeId || shapeId === 'rect') return null;
+    if (SHAPE_DEFS[shapeId]) return SHAPE_DEFS[shapeId];
+    const u = userShapes.find(s => s.id === shapeId);
+    return u ? { path: u.path } : null;
+  })();
   const pal = WM.DOMAIN[thread.dc];
   const [hover, setHover] = useStateH(false);
   const [showReframes, setShowReframes] = useStateH(false);
@@ -88,7 +99,7 @@ function ThreadCluster({
     }
   };
 
-  const shaped = shapeId && shapeId !== 'rect';
+  const shaped = !!shapeDef;
   const bColor = borderOverride?.color;
   const bPx    = borderOverride?.thickness;
   const customBorder = !!(bColor || bPx);
@@ -217,7 +228,7 @@ function ThreadCluster({
             <g transform={shapeScale !== 1
               ? `translate(50 50) scale(${shapeScale}) translate(-50 -50)`
               : undefined}>
-              <path d={SHAPE_DEFS[shapeId].path} fill="none"
+              <path d={shapeDef.path} fill="none"
                 stroke={customBorder ? (bColor || pal.accent) : (pal.accent + 'AA')}
                 strokeWidth={customBorder ? (bPx || 1.6) : 1.6}
                 vectorEffect="non-scaling-stroke" />
@@ -1344,6 +1355,7 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
                   zoom={canvasZoom}
                   shapeId={homeShapesEdit[t.id] || 'rect'}
                   shapeScale={homeShapeScalesEdit[t.id] ?? 1}
+                  userShapes={userShapes}
                   borderOverride={homeBordersEdit[t.id] || null}
                   selected={(designMode === 'shape' || designMode === 'border') && selectedClusterId === t.id}
                   onMove={setClusterPos}

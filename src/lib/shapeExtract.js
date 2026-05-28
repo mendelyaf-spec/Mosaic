@@ -328,25 +328,48 @@ function pathFromPoints(pts) {
   return s + 'Z';
 }
 
-// Render the extracted silhouette to a tiny dataURL preview (filled
-// black on white) so the library tile can show what was captured.
-function renderPreview(pts) {
-  const c = document.createElement('canvas');
-  c.width = 80; c.height = 80;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, 80, 80);
-  if (!pts.length) return c.toDataURL();
-  ctx.beginPath();
-  for (let i = 0; i < pts.length; i++) {
-    const x = pts[i].x * 0.8;
-    const y = pts[i].y * 0.8;
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+// Render the extracted subject WITH its original colours by masking
+// the source image: subject pixels keep their RGB, background pixels
+// go transparent. The dataURL is what gets stored as the saved shape's
+// preview and shown in the library tile + modal — so the user sees
+// their actual leaf (or whatever they uploaded), not a black silhouette.
+function renderSubjectImage(srcImageData, labelledMask, W, H) {
+  // Find the bounding box of the subject so we can crop tightly and
+  // not waste pixels on transparent border space.
+  let minX = W, minY = H, maxX = 0, maxY = 0;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (labelledMask[y * W + x]) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
   }
-  ctx.closePath();
-  ctx.fillStyle = '#1A1714';
-  ctx.fill();
-  return c.toDataURL();
+  if (maxX < minX) return ''; // no subject pixels
+  const cropW = maxX - minX + 1;
+  const cropH = maxY - minY + 1;
+  const c = document.createElement('canvas');
+  c.width = cropW; c.height = cropH;
+  const ctx = c.getContext('2d');
+  const out = ctx.createImageData(cropW, cropH);
+  for (let y = 0; y < cropH; y++) {
+    for (let x = 0; x < cropW; x++) {
+      const srcI = ((y + minY) * W + (x + minX)) * 4;
+      const dstI = (y * cropW + x) * 4;
+      if (labelledMask[(y + minY) * W + (x + minX)]) {
+        out.data[dstI]     = srcImageData.data[srcI];
+        out.data[dstI + 1] = srcImageData.data[srcI + 1];
+        out.data[dstI + 2] = srcImageData.data[srcI + 2];
+        out.data[dstI + 3] = 255;
+      } else {
+        out.data[dstI + 3] = 0;
+      }
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+  return c.toDataURL('image/png');
 }
 
 // Render the current binary mask to a dataURL — useful diagnostic
@@ -409,7 +432,7 @@ export async function extractShape(dataUrl, { threshold = 90, epsilon = 1.5 } = 
   return {
     path: pathFromPoints(normalized),
     points: normalized,
-    preview: renderPreview(normalized),
+    preview: renderSubjectImage(imageData, labelled, PROC, PROC),
     pointCount: normalized.length,
     coverage,
     maskPreview,
