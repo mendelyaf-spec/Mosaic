@@ -231,7 +231,7 @@ function Breadcrumb({ trail, onNavigate, here, navigate, viewMode = "maya", show
       {/* Wordmark + trail (left) */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px 7px 12px" }}>
         <span style={{ fontFamily: FONT_SERIF, fontSize: 13, letterSpacing: ".02em", color: "#1A1714" }}>
-          Wander<em style={{ color: "#1A5C46", fontStyle: "normal" }}>mark</em>
+          Mosaic
         </span>
         {showTrail && trail.map((t, i) => (
           <React.Fragment key={i}>
