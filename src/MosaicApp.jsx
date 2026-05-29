@@ -20,7 +20,8 @@ export default function MosaicApp() {
   const viewMode = 'maya';
 
   if (room === 'home') {
-    return <HomeRoom navigate={navigate} firstUse={false} viewMode={viewMode} />;
+    return <HomeRoom navigate={navigate} firstUse={false} viewMode={viewMode}
+                     visitingOwner={params.owner || null} />;
   }
   if (room === 'thread') {
     const thread = getThreadById(params.id) || WM.THREADS[0];

@@ -14,6 +14,7 @@ import {
 import { WM } from '../data/wm-data.js';
 import {
   getAllThreads, getThreadById, deleteThread,
+  getThreadsByOwner,
   loadHomeLayout, saveHomeLayout,
   loadHomeShapes, saveHomeShapes,
   loadHomeShapeScales, saveHomeShapeScales,
@@ -458,10 +459,18 @@ function HomeGridToggle({ current, onSwitch }) {
   );
 }
 
-function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStage, openerMode }) {
+function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStage, openerMode, visitingOwner = null }) {
   // version bumps on delete so getAllThreads() re-runs against fresh storage
   const [version, setVersion] = useStateH(0);
-  const threads = React.useMemo(() => getAllThreads(), [version]);
+  // When visiting another member's home, source their threads from the
+  // seed data via their owner key. Maya's own home keeps the
+  // getAllThreads behaviour (user-created + seeded + hidden filter).
+  const isGuest = !!(visitingOwner && visitingOwner !== 'Maya R.');
+  const threads = React.useMemo(
+    () => isGuest ? getThreadsByOwner(visitingOwner) : getAllThreads(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [version, isGuest, visitingOwner]
+  );
   const [zoom, setZoom] = useStateH(ZOOM_DEFAULT);
   const [viewPeriod, setViewPeriod] = useStateH("all");
   const [viewMode, setViewMode] = useStateH("spatial"); // "spatial" | "timeline"
@@ -736,12 +745,16 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
   // when the user zooms in past 1.0 — at that closeness the chrome competes
   // with the cluster they're inspecting.
   const fade = zoom > 1.0 ? Math.max(0, 1 - (zoom - 1.0) * 4) : 1;
-  const personaLabel = whoseView === "parent"
+  const personaLabel = isGuest
+    ? visitingOwner
+    : whoseView === "parent"
     ? "Parent — managing Iris's phone"
     : whoseView === "child"
     ? "Iris (child) — Maya's phone"
     : "Maya R.";
-  const personaSection = whoseView === "parent"
+  const personaSection = isGuest
+    ? `§01 Home · visiting · ${threads.length} thread${threads.length === 1 ? '' : 's'} held`
+    : whoseView === "parent"
     ? "§01 Parent · co-parent admin"
     : whoseView === "child"
     ? "§01 Home · two threads held"
@@ -771,15 +784,27 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
         marginTop: 14, display: "flex", flexDirection: "column",
         alignItems: "flex-end", gap: 5,
       }}>
-        <button onClick={() => setSchedulerOpen(true)} style={{
-          background: "transparent", border: "1px solid rgba(26,92,70,.25)",
-          color: "#1A5C46", fontFamily: FH, fontSize: 10.5, fontWeight: 500,
-          padding: "5px 10px", borderRadius: 12, cursor: "pointer",
-          letterSpacing: ".02em",
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(26,92,70,.07)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-        >◷ Scheduler</button>
+        {isGuest ? (
+          <button onClick={() => navigate("home")} style={{
+            background: "transparent", border: "1px solid rgba(26,92,70,.25)",
+            color: "#1A5C46", fontFamily: FH, fontSize: 10.5, fontWeight: 500,
+            padding: "5px 10px", borderRadius: 12, cursor: "pointer",
+            letterSpacing: ".02em",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(26,92,70,.07)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >← back to your home</button>
+        ) : (
+          <button onClick={() => setSchedulerOpen(true)} style={{
+            background: "transparent", border: "1px solid rgba(26,92,70,.25)",
+            color: "#1A5C46", fontFamily: FH, fontSize: 10.5, fontWeight: 500,
+            padding: "5px 10px", borderRadius: 12, cursor: "pointer",
+            letterSpacing: ".02em",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(26,92,70,.07)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >◷ Scheduler</button>
+        )}
         {whoseView === "child" && (
           <button onClick={() => navigate("pod")} style={{
             display: "inline-flex", alignItems: "center", gap: 7,
@@ -844,20 +869,22 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
             transition: "all .15s",
           }}>{m.l}</button>
         ))}
-        <button
-          onClick={() => {
-            if (viewMode !== 'spatial') setViewMode('spatial');
-            if (designMode === 'off') enterMode('rearrange');
-          }}
-          title="Rearrange clusters, pick shapes, borders, ether"
-          style={{
-            fontSize: 10, fontWeight: 500, padding: "3px 9px", borderRadius: 9,
-            cursor: "pointer", fontFamily: FH,
-            border: `1px solid ${designMode !== 'off' ? "#1A5C46" : "rgba(26,92,70,.4)"}`,
-            background: designMode !== 'off' ? "#E3EEE9" : "rgba(246,243,236,.7)",
-            color: "#1A5C46",
-            transition: "all .15s",
-          }}>✦ Design</button>
+        {!isGuest && (
+          <button
+            onClick={() => {
+              if (viewMode !== 'spatial') setViewMode('spatial');
+              if (designMode === 'off') enterMode('rearrange');
+            }}
+            title="Rearrange clusters, pick shapes, borders, ether"
+            style={{
+              fontSize: 10, fontWeight: 500, padding: "3px 9px", borderRadius: 9,
+              cursor: "pointer", fontFamily: FH,
+              border: `1px solid ${designMode !== 'off' ? "#1A5C46" : "rgba(26,92,70,.4)"}`,
+              background: designMode !== 'off' ? "#E3EEE9" : "rgba(246,243,236,.7)",
+              color: "#1A5C46",
+              transition: "all .15s",
+            }}>✦ Design</button>
+        )}
       </div>
     </div>
   );
@@ -1361,7 +1388,7 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
                   onMove={setClusterPos}
                   onSelect={setSelectedClusterId}
                   onOpen={th => openThread(th.id)}
-                  onDelete={handleDelete} />
+                  onDelete={isGuest ? null : handleDelete} />
               </div>
             );
           })}

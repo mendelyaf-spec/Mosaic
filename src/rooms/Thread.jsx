@@ -2083,15 +2083,21 @@ function ThreadRoomImpl({ navigate, thread: propThread, viewMode = "maya", onClo
   //     — clicking shouldn't send Maya to her own home from Priya's thread).
   const ownThread = isOwnThread(thread.id);
   const inExpansion = typeof onClose === "function";
-  const ownerCardClickable = ownThread || inExpansion;
+  // On someone else's thread we now navigate to that owner's home page
+  // rather than leaving the card inert — gives a way to discover what
+  // else the kindred member is holding.
+  const ownerCardClickable = ownThread || inExpansion || (!ownThread && !!thread.owner);
   const ownerCardSubtext = inExpansion
     ? (ownThread ? "your thread · click to close" : `${ownerLabel}’s thread · click to close`)
-    : (ownThread ? "your thread · click to go home" : `${ownerLabel}’s thread · you can read it, not edit it`);
+    : ownThread
+    ? "your thread · click to go home"
+    : `${ownerLabel}’s thread · click to visit their home`;
   const handleOwnerClick = (e) => {
     if (!ownerCardClickable) return;
     e.preventDefault();
     e.stopPropagation();
     if (inExpansion) onClose();
+    else if (!ownThread && thread.owner) navigate("home", { owner: thread.owner });
     else navigate("home");
   };
   const identityCard = (

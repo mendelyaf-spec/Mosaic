@@ -290,6 +290,34 @@ export function getAllThreads() {
   return [...user, ...seed];
 }
 
+// Threads owned by someone other than Maya, for the "visiting X's home"
+// view. Pulls from KINDRED_THREADS (which carry an owner field for each
+// thread in a courtyard) and PERSONAL_THREADS (threads not yet in a
+// courtyard but still authored by a non-Maya member).
+export function getThreadsByOwner(owner) {
+  if (!owner) return [];
+  const kindred  = (WM.KINDRED_THREADS  || []).filter(t => t.owner === owner);
+  const personal = (WM.PERSONAL_THREADS || []).filter(t => t.owner === owner);
+  return [...kindred, ...personal];
+}
+
+// All members other than Maya who own at least one thread. Returns a
+// list of { owner, threadCount } so callers can show a directory or
+// jump links.
+export function listOtherMembers() {
+  const map = new Map();
+  for (const t of (WM.KINDRED_THREADS || [])) {
+    if (!t.owner) continue;
+    map.set(t.owner, (map.get(t.owner) || 0) + 1);
+  }
+  for (const t of (WM.PERSONAL_THREADS || [])) {
+    if (!t.owner) continue;
+    map.set(t.owner, (map.get(t.owner) || 0) + 1);
+  }
+  return Array.from(map, ([owner, threadCount]) => ({ owner, threadCount }))
+    .sort((a, b) => a.owner.localeCompare(b.owner));
+}
+
 export function getThreadById(id) {
   return getAllThreads().find(t => t.id === id)
       || (WM.KINDRED_THREADS || []).find(t => t.id === id)
