@@ -351,8 +351,14 @@ function ThreadCluster({
 // Home grid view — same chrome and tile language as the Thread grid,
 // but each tile is a THREAD (not a card on a thread). Click a tile to
 // open that thread.
-function HomeGridView({ threads, viewMode, setViewMode, onOpenThread }) {
+function HomeGridView({ threads, viewMode, setViewMode, onOpenThread, ownerLabel = 'Maya R.', isGuest = false }) {
   const totalCards = threads.reduce((n, t) => n + (t.fl?.length || 0) + (t.notesList?.length || 0), 0);
+  // Heading is tailored to the viewer:
+  //   - on your own home: a first-person prompt
+  //   - visiting someone else's: a third-person observation
+  const heading = isGuest
+    ? `What ${ownerLabel.split(' ')[0]} is holding right now`
+    : 'What are you holding right now?';
   return (
     <div className="tg-root">
       <GridStyleTag />
@@ -366,7 +372,7 @@ function HomeGridView({ threads, viewMode, setViewMode, onOpenThread }) {
           <span style={{
             fontFamily: "'Fraunces', Georgia, serif", fontStyle: 'italic',
             fontSize: 16, color: '#111', marginLeft: 10,
-          }}>the grid</span>
+          }}>{isGuest ? `${ownerLabel.split(' ')[0]}'s grid` : 'the grid'}</span>
         </div>
         <div className="center">
           <span className="tg-center-label">{threads.length} threads · {totalCards} cards</span>
@@ -378,11 +384,11 @@ function HomeGridView({ threads, viewMode, setViewMode, onOpenThread }) {
       <div className="tg-pad">
         <div className="tg-thead">
           <div className="meta">
-            <span>Maya R.</span>
+            <span>{ownerLabel}</span>
             <span className="sep">·</span>
             <span>{threads.length} threads in motion</span>
           </div>
-          <h1 className="q">What are you holding right now?</h1>
+          <h1 className="q">{heading}</h1>
         </div>
         <div className="tg-grid">
           {threads.map(t => (
@@ -1014,6 +1020,8 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
         viewMode={viewMode}
         setViewMode={setViewMode}
         onOpenThread={openThread}
+        ownerLabel={isGuest ? visitingOwner : 'Maya R.'}
+        isGuest={isGuest}
       />
     );
   }
