@@ -32,11 +32,6 @@ function Placeholder({ here, title, note, navigate }) {
   );
 }
 
-export function TownHallRoom({ navigate }) {
-  return <Placeholder navigate={navigate} here="townhall" title="Town Hall"
-    note="Chapter board — pinned notes, bulletin, local content. Not yet ported to ES modules in Phase 1." />;
-}
-
 export function PodRoom({ navigate }) {
   return <Placeholder navigate={navigate} here="pod" title="Pod"
     note="Child-view pod surface. Out of scope for Phase 1." />;

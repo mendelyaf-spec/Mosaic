@@ -10,9 +10,8 @@ import { ThreadRoom } from './rooms/Thread.jsx';
 import { CourtyardRoom } from './rooms/Courtyard.jsx';
 import { SearchRoom } from './rooms/Search.jsx';
 import { PromenadeRoom } from './rooms/Promenade.jsx';
-import {
-  TownHallRoom, PodRoom, PodAdminRoom,
-} from './rooms/Stubs.jsx';
+import { TownHallRoom } from './rooms/TownHall.jsx';
+import { PodRoom, PodAdminRoom } from './rooms/Stubs.jsx';
 
 export default function MosaicApp() {
   const { room, params, navigate } = useRoom();
