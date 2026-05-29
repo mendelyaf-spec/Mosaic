@@ -18,6 +18,7 @@ const BORDERS_KEY  = 'mosaic.threadBorders.v1';
 const USER_SHAPES_KEY = 'mosaic.userShapes.v1';
 const SHAPE_SCALES_KEY = 'mosaic.threadShapeScales.v1';
 const HOME_SHAPE_SCALES_KEY = 'mosaic.homeShapeScales.v1';
+const SCHEDULER_KEY = 'mosaic.scheduler.v1';
 
 export function loadUserThreads() {
   return readStored(THREADS_KEY, []);
@@ -772,4 +773,46 @@ export function appendSessionToThread(threadId, {
 
   saveThread(thread);
   return thread;
+}
+
+// ── Scheduler ──────────────────────────────────────────────────────
+// User-created events (proposals sent, meetups committed to,
+// proposals received). One flat list, sorted at render time. Each
+// entry carries enough to render a card and find its way back to the
+// thread / courtyard it came from.
+//
+// Event shape:
+//   {
+//     id, kind: 'live' | 'async' | 'meetup' | 'other',
+//     title, with: [whoArray], when: string, where?: string,
+//     note?: string, threadId?: string, courtyardName?: string,
+//     status: 'proposed' | 'confirmed' | 'declined',
+//     direction: 'outgoing' | 'incoming',
+//     createdAt: number,
+//   }
+export function loadScheduledEvents() {
+  return readStored(SCHEDULER_KEY, []);
+}
+
+export function saveScheduledEvent(event) {
+  const all = loadScheduledEvents();
+  const id = event.id || ('e-' + Date.now().toString(36));
+  const next = { ...event, id, createdAt: event.createdAt || Date.now() };
+  const idx = all.findIndex(e => e.id === id);
+  if (idx >= 0) all[idx] = next; else all.unshift(next);
+  writeStored(SCHEDULER_KEY, all);
+  return next;
+}
+
+export function updateScheduledEvent(id, patch) {
+  const all = loadScheduledEvents();
+  const idx = all.findIndex(e => e.id === id);
+  if (idx < 0) return null;
+  all[idx] = { ...all[idx], ...patch };
+  writeStored(SCHEDULER_KEY, all);
+  return all[idx];
+}
+
+export function deleteScheduledEvent(id) {
+  writeStored(SCHEDULER_KEY, loadScheduledEvents().filter(e => e.id !== id));
 }

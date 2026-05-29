@@ -27,6 +27,7 @@ import {
   GridStyleTag, TextTileBody, PinGlyph,
 } from './Thread.jsx';
 import { HomeResume } from './HomeResume.jsx';
+import { Scheduler } from './Scheduler.jsx';
 
 function ThreadCluster({
   thread, pos, onOpen, onDelete, centerAnchor = false,
@@ -1287,6 +1288,11 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
           {breadcrumb}
           {designPanel}
           {extractorModal}
+          <Scheduler
+            open={schedulerOpen}
+            navigate={navigate}
+            onClose={() => setSchedulerOpen(false)}
+          />
         </>
       }>
       {({ zoom: zz }) => (
