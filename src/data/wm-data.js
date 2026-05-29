@@ -20,6 +20,7 @@ const DOMAIN = {
   purple: { bg: "#ECEAF9", accent: "#3A2D86", dot: "#3A2D86", card: "#F5F3FC", soft: "#ECEAF9" },
   green:  { bg: "#E8F0E3", accent: "#285A18", dot: "#285A18", card: "#F0F6EC", soft: "#E8F0E3" },
   amber:  { bg: "#F8F0DC", accent: "#75580D", dot: "#75580D", card: "#FAF5E8", soft: "#F8F0DC" },
+  indigo: { bg: "#E6E8F0", accent: "#2A357A", dot: "#2A357A", card: "#F0F2F8", soft: "#E6E8F0" },
 };
 
 // Maya's held threads. Three only — what she's actually carrying right now.
@@ -636,6 +637,206 @@ const KINDRED_THREADS = [
   },
 ];
 
+// ARLO VANCE — a second seeded member. Profile + four threads, each
+// one a "field" (Information Theory, Protocol & Network Design,
+// Signals & Error Correction, Semiotics & Meaning). Threads ride the
+// same KINDRED_THREADS schema so getThreadsByOwner('Arlo Vance')
+// surfaces them on his Home page. Foundations are stored on fl[] with
+// extra cover fields (bookSpine, bookAuthor, bookYear, bookKind);
+// output entries on notesList[] gain a `kind` (note|project|event|shelf)
+// + `date` for the Résumé view. Per-thread `competencies` array is new.
+const ARLO_PROFILE = {
+  name: "Arlo Vance",
+  handle: "arlo",
+  role: "Software engineer · protocol nerd",
+  place: "Berlin · remote",
+  since: "in the square since 2023",
+  creed: "Reading communications theory as a working programmer — entropy, protocols, error correction, and what it actually means for a message to arrive intact.",
+  initials: "AV",
+  stats: { foundations: 8, works: 10, fields: 4, followers: 482 },
+};
+
+const ARLO_THREADS = [
+  {
+    id: "a-info-theory",
+    q: "How much can a channel actually carry, and what does that mean for the rest of us?",
+    owner: "Arlo Vance",
+    state: "active",
+    courtyardName: "channel capacity",
+    courtyardTopic: "information theory",
+    kindred: [
+      { who: "Naomi Park",    since: "1 month",  q: "Is entropy the right shape for surprise?" },
+      { who: "Felix Roe",     since: "6 weeks",  q: "What does compression teach us about meaning?" },
+      { who: "Yuki Tanaka",   since: "3 months", q: "Source coding for slow channels" },
+    ],
+    domain: "Information Theory",
+    dc: "indigo",
+    age: "pursuing for 2 years",
+    last: "2 weeks ago",
+    finds: 2,
+    notes: 3,
+    mileMarkers: [
+      { age: "2 years ago", q: "Started with Shannon — channels and capacity" },
+      { age: "8 months ago", q: "Now: compression ratios are a lower bound, not a target" },
+    ],
+    fl: [
+      {
+        id: "i-shannon", t: "A Mathematical Theory of Communication", s: "Bell System Tech. J. · 1948",
+        d: "2y", i: "📄",
+        bookKind: "paper", bookAuthor: "Claude E. Shannon", bookYear: "1948", bookSpine: "#2A357A",
+        note: "Where the field starts. The math finally caught up to what telegraph operators always knew.",
+      },
+      {
+        id: "i-mackay", t: "Information Theory, Inference, and Learning Algorithms", s: "David J. C. MacKay · 2003",
+        d: "18mo", i: "📖",
+        bookKind: "book", bookAuthor: "David J. C. MacKay", bookYear: "2003", bookSpine: "#2f3a78",
+        note: "Bayesian throughout. Made me rethink probabilistic inference from first principles.",
+      },
+    ],
+    competencies: [
+      { name: "Entropy modeling",         endorsements: 16 },
+      { name: "Source coding",            endorsements: 11 },
+      { name: "Probabilistic reasoning",  endorsements: 9 },
+    ],
+    notesList: [
+      { id: "d-entropyviz",   kind: "project", date: "Apr 2026", type: "text",  cap: "entropy-viz — an interactive entropy explorer", meta: "open source · 1.2k stars", d: "1mo" },
+      { id: "d-compression",  kind: "note",    date: "Jan 2026", type: "text",  cap: "Your compression ratio is a lower bound, not a target", meta: "written · 9 min read", d: "4mo" },
+      { id: "d-shannon-talk", kind: "event",   date: "Nov 2025", type: "audio", cap: "Talk — Shannon for working programmers", meta: "conference talk · 45 min", dur: "45:00", d: "6mo" },
+    ],
+  },
+  {
+    id: "a-protocol-net",
+    q: "What does a protocol owe a message it can't watch arrive?",
+    owner: "Arlo Vance",
+    state: "active",
+    courtyardName: "backpressure & flow",
+    courtyardTopic: "distributed systems",
+    kindred: [
+      { who: "Priya Raman",    since: "2 weeks",  q: "What does a queue owe its slowest consumer?" },
+      { who: "Theo Lindqvist", since: "5 weeks",  q: "Can a protocol be fair without a global clock?" },
+      { who: "Sasha Orlov",    since: "3 months", q: "Distributed systems as social contracts" },
+    ],
+    domain: "Protocol & Network Design",
+    dc: "teal",
+    age: "pursuing for 2 years",
+    last: "1 week ago",
+    finds: 2,
+    notes: 3,
+    mileMarkers: [
+      { age: "2 years ago", q: "Started with retries & timeouts" },
+      { age: "5 months ago", q: "Now: backpressure is part of the protocol, not the transport" },
+    ],
+    fl: [
+      {
+        id: "i-lamport", t: "Time, Clocks, and the Ordering of Events", s: "Comms. of the ACM · 1978",
+        d: "2y", i: "📄",
+        bookKind: "paper", bookAuthor: "Leslie Lamport", bookYear: "1978", bookSpine: "#1f5a4a",
+        note: "There is no global 'now.' Once that lands, half of distributed systems stops being mysterious.",
+      },
+      {
+        id: "i-tanenbaum", t: "Computer Networks", s: "Andrew S. Tanenbaum · 1981",
+        d: "18mo", i: "📖",
+        bookKind: "book", bookAuthor: "Andrew S. Tanenbaum", bookYear: "1981", bookSpine: "#1f5a4a",
+        note: "The layering model I still draw on whiteboards. Communication as nested envelopes.",
+      },
+    ],
+    competencies: [
+      { name: "Distributed systems", endorsements: 21 },
+      { name: "Protocol design",     endorsements: 14 },
+      { name: "Concurrency",         endorsements: 12 },
+    ],
+    notesList: [
+      { id: "d-gossip",       kind: "project", date: "Mar 2026", type: "text",  cap: "gossip-rs — a small epidemic broadcast library", meta: "open source · 640 stars", d: "2mo" },
+      { id: "d-backpressure", kind: "event",   date: "Feb 2026", type: "text",  cap: "RFC thread — backpressure semantics for the queue", meta: "async RFC · 3 rounds · 6 voices", d: "3mo" },
+      { id: "d-clocks",       kind: "note",    date: "Dec 2025", type: "text",  cap: "I reread 'Time, Clocks' twenty times — here's the map", meta: "written · 14 min read", d: "5mo" },
+    ],
+  },
+  {
+    id: "a-signals-codes",
+    q: "Can redundancy be designed, instead of wasted?",
+    owner: "Arlo Vance",
+    state: "resting",
+    courtyardName: null,
+    courtyardTopic: null,
+    kindred: [],
+    domain: "Signals & Error Correction",
+    dc: "amber",
+    age: "pursuing for 18 months",
+    last: "2 months ago",
+    finds: 2,
+    notes: 2,
+    mileMarkers: [
+      { age: "18 months ago", q: "Why is Hamming distance not the everyday vocabulary?" },
+      { age: "4 months ago",  q: "Reed–Solomon as a teaching object" },
+    ],
+    fl: [
+      {
+        id: "i-macwilliams", t: "The Theory of Error-Correcting Codes", s: "MacWilliams & Sloane · 1977",
+        d: "18mo", i: "📖",
+        bookKind: "book", bookAuthor: "MacWilliams & Sloane", bookYear: "1977", bookSpine: "#9a5a1a",
+        note: "Dense. Worth every page once you start treating codes as designed objects.",
+      },
+      {
+        id: "i-lyons", t: "Understanding Digital Signal Processing", s: "Richard G. Lyons · 1996",
+        d: "14mo", i: "📖",
+        bookKind: "book", bookAuthor: "Richard G. Lyons", bookYear: "1996", bookSpine: "#7a4a12",
+        note: "Made FFTs intuitive — no small thing.",
+      },
+    ],
+    competencies: [
+      { name: "Error-correcting codes",  endorsements: 10 },
+      { name: "Digital signal processing", endorsements: 8 },
+      { name: "Numerical methods",        endorsements: 6 },
+    ],
+    notesList: [
+      { id: "d-rs",      kind: "project", date: "May 2026", type: "text", cap: "reed-solomon playground", meta: "open source · 380 stars", d: "3wk" },
+      { id: "d-hamming", kind: "note",    date: "Sep 2025", type: "text", cap: "Hamming codes by hand, then in 30 lines", meta: "written · 11 min read", d: "8mo" },
+    ],
+  },
+  {
+    id: "a-semiotics",
+    q: "What survives past the bits — what makes a message mean?",
+    owner: "Arlo Vance",
+    state: "active",
+    courtyardName: null,
+    courtyardTopic: null,
+    kindred: [],
+    domain: "Semiotics & Meaning",
+    dc: "purple",
+    age: "pursuing for 16 months",
+    last: "3 weeks ago",
+    finds: 2,
+    notes: 2,
+    mileMarkers: [
+      { age: "16 months ago", q: "Where does signal end and meaning begin?" },
+      { age: "5 months ago",  q: "Naming as an act of communication design" },
+    ],
+    fl: [
+      {
+        id: "i-mcluhan", t: "Understanding Media", s: "Marshall McLuhan · 1964",
+        d: "16mo", i: "📖",
+        bookKind: "book", bookAuthor: "Marshall McLuhan", bookYear: "1964", bookSpine: "#7a2a5a",
+        note: "Still the cleanest formulation: the medium is the message.",
+      },
+      {
+        id: "i-geb", t: "Gödel, Escher, Bach", s: "Douglas Hofstadter · 1979",
+        d: "14mo", i: "📖",
+        bookKind: "book", bookAuthor: "Douglas Hofstadter", bookYear: "1979", bookSpine: "#5a2a6a",
+        note: "Self-reference as the engine of meaning. Years to digest.",
+      },
+    ],
+    competencies: [
+      { name: "Technical writing",   endorsements: 18 },
+      { name: "API & naming design", endorsements: 13 },
+      { name: "Systems thinking",    endorsements: 11 },
+    ],
+    notesList: [
+      { id: "d-medium", kind: "note",  date: "Oct 2025", type: "text", cap: "The medium is the message — for API design", meta: "written · 8 min read", d: "7mo" },
+      { id: "d-naming", kind: "shelf", date: "Aug 2025", type: "text", cap: "Papers that changed how I name things", meta: "published list · followed by 73", d: "9mo" },
+    ],
+  },
+];
+
 // PERSONAL THREADS — owners not yet inside a courtyard. Same shape as
 // KINDRED_THREADS but with no courtyardName/Topic and no kindred. The
 // promenade browses these too; an item from one of these can't be the
@@ -873,5 +1074,5 @@ const ADJACENT_USERS = [
   { handle: "@dev_m",   thread: "Tech campuses as private cities" },
 ];
 
-export { PALETTE, DOMAIN, THREADS, KINDRED_THREADS, PERSONAL_THREADS, COURTYARD, TOWN_HALL, SEARCH_POSTURES, ADJACENT_USERS };
-export const WM = { PALETTE, DOMAIN, THREADS, KINDRED_THREADS, PERSONAL_THREADS, COURTYARD, TOWN_HALL, SEARCH_POSTURES, ADJACENT_USERS };
+export { PALETTE, DOMAIN, THREADS, KINDRED_THREADS, PERSONAL_THREADS, ARLO_PROFILE, ARLO_THREADS, COURTYARD, TOWN_HALL, SEARCH_POSTURES, ADJACENT_USERS };
+export const WM = { PALETTE, DOMAIN, THREADS, KINDRED_THREADS, PERSONAL_THREADS, ARLO_PROFILE, ARLO_THREADS, COURTYARD, TOWN_HALL, SEARCH_POSTURES, ADJACENT_USERS };

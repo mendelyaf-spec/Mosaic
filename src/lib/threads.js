@@ -291,14 +291,15 @@ export function getAllThreads() {
 }
 
 // Threads owned by someone other than Maya, for the "visiting X's home"
-// view. Pulls from KINDRED_THREADS (which carry an owner field for each
-// thread in a courtyard) and PERSONAL_THREADS (threads not yet in a
-// courtyard but still authored by a non-Maya member).
+// view. Pulls from KINDRED_THREADS, PERSONAL_THREADS, and ARLO_THREADS
+// (Arlo is a fully seeded peer with his own four threads). Each carries
+// an owner field; we match on equality.
 export function getThreadsByOwner(owner) {
   if (!owner) return [];
   const kindred  = (WM.KINDRED_THREADS  || []).filter(t => t.owner === owner);
   const personal = (WM.PERSONAL_THREADS || []).filter(t => t.owner === owner);
-  return [...kindred, ...personal];
+  const arlo     = (WM.ARLO_THREADS     || []).filter(t => t.owner === owner);
+  return [...arlo, ...kindred, ...personal];
 }
 
 // All members other than Maya who own at least one thread. Returns a
@@ -314,8 +315,59 @@ export function listOtherMembers() {
     if (!t.owner) continue;
     map.set(t.owner, (map.get(t.owner) || 0) + 1);
   }
+  for (const t of (WM.ARLO_THREADS || [])) {
+    if (!t.owner) continue;
+    map.set(t.owner, (map.get(t.owner) || 0) + 1);
+  }
   return Array.from(map, ([owner, threadCount]) => ({ owner, threadCount }))
     .sort((a, b) => a.owner.localeCompare(b.owner));
+}
+
+// Profile metadata for a member (name, handle, role, creed, stats…)
+// Used by the Résumé view's masthead + metric strip. Maya gets a
+// minimal default built from her seeded threads; Arlo's full profile
+// lives in wm-data.js (ARLO_PROFILE).
+export function getMemberProfile(owner) {
+  if (owner === (WM.ARLO_PROFILE && WM.ARLO_PROFILE.name)) {
+    return WM.ARLO_PROFILE;
+  }
+  // Maya / default: synthesize a minimal profile from her threads.
+  const maya = (!owner || owner === 'Maya R.');
+  if (maya) {
+    const threads = WM.THREADS || [];
+    return {
+      name: 'Maya R.',
+      handle: 'maya_r',
+      role: 'Cafe-owner · curious holder of questions',
+      place: 'Hawley, PA',
+      since: 'in the square since the beginning',
+      creed: 'Three threads in motion. Each one started somewhere small and grew teeth on its own time.',
+      initials: 'MR',
+      stats: {
+        foundations: threads.reduce((n, t) => n + (t.fl?.length || 0), 0),
+        works:       threads.reduce((n, t) => n + (t.notesList?.length || 0), 0),
+        fields:      new Set(threads.map(t => t.domain).filter(Boolean)).size,
+        followers:   147,
+      },
+    };
+  }
+  // For other kindred members: a generic placeholder so the view still renders.
+  const threads = getThreadsByOwner(owner);
+  return {
+    name: owner,
+    handle: owner.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+    role: '',
+    place: '',
+    since: '',
+    creed: '',
+    initials: (owner.split(' ').map(s => s[0]).join('') || '?').slice(0, 2).toUpperCase(),
+    stats: {
+      foundations: threads.reduce((n, t) => n + (t.fl?.length || 0), 0),
+      works:       threads.reduce((n, t) => n + (t.notesList?.length || 0), 0),
+      fields:      new Set(threads.map(t => t.domain).filter(Boolean)).size,
+      followers:   0,
+    },
+  };
 }
 
 export function getThreadById(id) {

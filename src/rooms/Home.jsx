@@ -14,7 +14,7 @@ import {
 import { WM } from '../data/wm-data.js';
 import {
   getAllThreads, getThreadById, deleteThread,
-  getThreadsByOwner,
+  getThreadsByOwner, getMemberProfile,
   loadHomeLayout, saveHomeLayout,
   loadHomeShapes, saveHomeShapes,
   loadHomeShapeScales, saveHomeShapeScales,
@@ -26,6 +26,7 @@ import {
   DesignPanel, EtherLayer, SHAPE_DEFS, ShapeExtractor,
   GridStyleTag, TextTileBody, PinGlyph,
 } from './Thread.jsx';
+import { HomeResume } from './HomeResume.jsx';
 
 function ThreadCluster({
   thread, pos, onOpen, onDelete, centerAnchor = false,
@@ -859,6 +860,7 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
           { id: "spatial",  l: "Spatial" },
           { id: "timeline", l: "Timeline" },
           { id: "grid",     l: "Grid" },
+          { id: "resume",   l: "Résumé" },
         ].map(m => (
           <button key={m.id} onClick={() => setViewMode(m.id)} style={{
             fontSize: 10, fontWeight: 500, padding: "3px 9px", borderRadius: 9,
@@ -982,6 +984,25 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
       </div>
     </div>
   );
+
+  // ============ RÉSUMÉ VIEW ============
+  // CV-style projection of the viewed member's threads: masthead +
+  // metric strip + field×output×foundations matrix. Same data as
+  // spatial/timeline/grid, different layout. Pure projection — pulls
+  // foundations from each thread's fl[] and output from notesList[],
+  // plus per-thread competencies.
+  if (viewMode === "resume") {
+    return (
+      <>
+        <HomeResume
+          threads={threads}
+          profile={getMemberProfile(isGuest ? visitingOwner : 'Maya R.')}
+          onOpenThread={openThread} />
+        {periodPills}
+        {breadcrumb}
+      </>
+    );
+  }
 
   // ============ GRID VIEW ============
   // Uniform thread tiles using the same design language as the Thread
