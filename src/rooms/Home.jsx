@@ -21,6 +21,7 @@ import {
   loadHomeBorders, saveHomeBorders,
   loadHomeEther, saveHomeEther,
   loadUserShapes, saveUserShape, deleteUserShape,
+  loadPod,
 } from '../lib/threads.js';
 import {
   DesignPanel, EtherLayer, SHAPE_DEFS, ShapeExtractor,
@@ -467,7 +468,7 @@ function HomeGridToggle({ current, onSwitch }) {
   );
 }
 
-function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStage, openerMode, visitingOwner = null }) {
+function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", onSwitchViewMode, openerStage, openerMode, visitingOwner = null }) {
   // version bumps on delete so getAllThreads() re-runs against fresh storage
   const [version, setVersion] = useStateH(0);
   // When visiting another member's home, source their threads from the
@@ -483,6 +484,23 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
   const [viewPeriod, setViewPeriod] = useStateH("all");
   const [viewMode, setViewMode] = useStateH("spatial"); // "spatial" | "timeline"
   const [schedulerOpen, setSchedulerOpen] = useStateH(false);
+
+  // Live pod countdown for the child-view aperture pill — ticks every
+  // second so "N min left" is real, not a static placeholder, and
+  // reflects whatever a parent has set from Pod (admin).
+  const [podNow, setPodNow] = useStateH(() => Date.now());
+  React.useEffect(() => {
+    if (whoseView !== "child" && whoseView !== "parent") return;
+    const id = setInterval(() => setPodNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [whoseView]);
+  const pod = (whoseView === "child" || whoseView === "parent") ? loadPod() : null;
+  const podRemainingMs = pod && pod.session.open && pod.session.openedAt
+    ? Math.max(0, pod.session.openedAt + pod.session.durationMin * 60000 - podNow)
+    : 0;
+  const podIsOpen = !!(pod && pod.session.open && podRemainingMs > 0);
+  const podMinLeft = Math.ceil(podRemainingMs / 60000);
+  const podPendingCount = pod ? pod.requests.filter(r => r.status === "pending").length : 0;
 
   // Clicking a thread routes to its own page. Each thread lives at
   // #room=thread&id=<id> so it's deep-linkable and Home recedes
@@ -826,11 +844,49 @@ function HomeRoom({ navigate, firstUse, viewMode: whoseView = "maya", openerStag
           onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(140,90,140,.08)"; }}
           >
             <span style={{
-              width: 6, height: 6, borderRadius: "50%", background: "#7C3F7C",
-              boxShadow: "0 0 0 2.5px rgba(140,90,140,.2)",
+              width: 6, height: 6, borderRadius: "50%",
+              background: podIsOpen ? "#7C3F7C" : "#B0ACA3",
+              boxShadow: podIsOpen ? "0 0 0 2.5px rgba(140,90,140,.2)" : "none",
             }} />
-            Pod open · 18 min left
+            {podIsOpen ? `Pod open · ${podMinLeft} min left` : "Pod closed"}
           </button>
+        )}
+        {whoseView === "parent" && (
+          <button onClick={() => navigate("pod-admin")} style={{
+            display: "inline-flex", alignItems: "center", gap: 7,
+            background: "rgba(140,90,140,.08)",
+            border: "1px solid rgba(140,90,140,.35)",
+            color: "#5E2E5E", fontFamily: FH, fontSize: 10.5, fontWeight: 500,
+            padding: "5px 10px", borderRadius: 12, cursor: "pointer",
+            letterSpacing: ".02em",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(140,90,140,.14)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(140,90,140,.08)"; }}
+          >
+            ⚙ Iris's pod {podIsOpen ? `· ${podMinLeft} min left` : "· closed"}
+            {podPendingCount > 0 ? ` · ${podPendingCount} pending` : ""}
+          </button>
+        )}
+        {!isGuest && onSwitchViewMode && (
+          <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+            {[
+              { id: "maya", label: "Maya" },
+              { id: "child", label: "Iris" },
+              { id: "parent", label: "Parent" },
+            ].map(p => (
+              <button key={p.id} onClick={() => p.id !== whoseView && onSwitchViewMode(p.id)}
+                disabled={p.id === whoseView}
+                title={p.id === whoseView ? `Viewing as ${p.label}` : `Switch to ${p.label}`}
+                style={{
+                  background: p.id === whoseView ? "#1A1714" : "transparent",
+                  color: p.id === whoseView ? "#F6F3EC" : "#9A968F",
+                  border: "1px solid " + (p.id === whoseView ? "#1A1714" : "rgba(26,23,20,.12)"),
+                  fontFamily: FH, fontSize: 9.5, fontWeight: 500,
+                  padding: "3px 8px", borderRadius: 10,
+                  cursor: p.id === whoseView ? "default" : "pointer",
+                }}>{p.label}</button>
+            ))}
+          </div>
         )}
       </div>
     </div>

@@ -1,25 +1,34 @@
 // Mosaic — main app router. Mounts the right room based on hash.
 // Phase 1: Home / Thread / Courtyard are full; everything else is a stub.
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useRoom } from './shell/shell.jsx';
 import { WM } from './data/wm-data.js';
-import { getThreadById } from './lib/threads.js';
+import { getThreadById, loadViewAs, saveViewAs } from './lib/threads.js';
 import { HomeRoom } from './rooms/Home.jsx';
 import { ThreadRoom } from './rooms/Thread.jsx';
 import { CourtyardRoom } from './rooms/Courtyard.jsx';
 import { SearchRoom } from './rooms/Search.jsx';
 import { PromenadeRoom } from './rooms/Promenade.jsx';
 import { TownHallRoom } from './rooms/TownHall.jsx';
-import { PodRoom, PodAdminRoom } from './rooms/Stubs.jsx';
+import { PodRoom, PodAdminRoom } from './rooms/Pod.jsx';
 
 export default function MosaicApp() {
   const { room, params, navigate } = useRoom();
 
-  const viewMode = 'maya';
+  // Which chair you're sitting in — "maya" (default adult view), "child"
+  // (Iris's restricted Pod view), or "parent" (co-parent admin view).
+  // Persisted across reloads; switched from Home's persona picker.
+  const [viewMode, setViewModeState] = useState(loadViewAs);
+  const setViewMode = (mode) => {
+    saveViewAs(mode);
+    setViewModeState(mode);
+    navigate('home');
+  };
 
   if (room === 'home') {
     return <HomeRoom navigate={navigate} firstUse={false} viewMode={viewMode}
+                     onSwitchViewMode={setViewMode}
                      visitingOwner={params.owner || null} />;
   }
   if (room === 'thread') {

@@ -19,6 +19,8 @@ const USER_SHAPES_KEY = 'mosaic.userShapes.v1';
 const SHAPE_SCALES_KEY = 'mosaic.threadShapeScales.v1';
 const HOME_SHAPE_SCALES_KEY = 'mosaic.homeShapeScales.v1';
 const SCHEDULER_KEY = 'mosaic.scheduler.v1';
+const VIEW_AS_KEY   = 'mosaic.viewAs.v1';
+const POD_KEY        = 'mosaic.pod.v1';
 
 export function loadUserThreads() {
   return readStored(THREADS_KEY, []);
@@ -815,4 +817,121 @@ export function updateScheduledEvent(id, patch) {
 
 export function deleteScheduledEvent(id) {
   writeStored(SCHEDULER_KEY, loadScheduledEvents().filter(e => e.id !== id));
+}
+
+// ── View-as persona ────────────────────────────────────────────────
+// Which chair you're sitting in: "maya" (default), "child" (Iris's
+// restricted view), or "parent" (co-parent admin view). Drives the
+// breadcrumb's room list and Home's aperture/persona chrome.
+export function loadViewAs() {
+  return readStored(VIEW_AS_KEY, 'maya');
+}
+export function saveViewAs(mode) {
+  writeStored(VIEW_AS_KEY, mode);
+}
+
+// ── Pod ───────────────────────────────────────────────────────────
+// A curated, time-boxed slice of Mosaic for a child. A parent opens a
+// session for a set number of minutes and curates which threads are
+// visible inside it; the child can ask for a thread to be added or for
+// more time, and those asks show up as pending requests for the parent
+// to approve or decline. Pod and Pod (admin) both read/write this one
+// blob so either room reflects the other's changes on next read.
+//
+// Shape:
+//   {
+//     session: { open, openedAt: ts|null, durationMin },
+//     curated: [{ id, threadId, title, addedAt }],
+//     requests: [{ id, kind: 'open'|'extend'|'thread', label,
+//                  minutes?, threadId?, createdAt, status }],
+//   }
+const DEFAULT_POD = {
+  session: { open: false, openedAt: null, durationMin: 30 },
+  curated: [],
+  requests: [],
+};
+
+export function loadPod() {
+  const stored = readStored(POD_KEY, null);
+  if (!stored) return JSON.parse(JSON.stringify(DEFAULT_POD));
+  return {
+    ...DEFAULT_POD,
+    ...stored,
+    session: { ...DEFAULT_POD.session, ...(stored.session || {}) },
+    curated: stored.curated || [],
+    requests: stored.requests || [],
+  };
+}
+
+export function savePod(pod) {
+  writeStored(POD_KEY, pod);
+  return pod;
+}
+
+export function openPodSession(durationMin) {
+  const pod = loadPod();
+  pod.session = {
+    open: true,
+    openedAt: Date.now(),
+    durationMin: durationMin ?? pod.session.durationMin ?? 30,
+  };
+  return savePod(pod);
+}
+
+export function closePodSession() {
+  const pod = loadPod();
+  pod.session = { ...pod.session, open: false };
+  return savePod(pod);
+}
+
+export function extendPodSession(minutes) {
+  const pod = loadPod();
+  pod.session = { ...pod.session, durationMin: (pod.session.durationMin || 0) + minutes };
+  return savePod(pod);
+}
+
+export function addPodCuration(item) {
+  const pod = loadPod();
+  if (pod.curated.some(c => c.threadId === item.threadId)) return pod;
+  const id = item.id || ('pc-' + Date.now().toString(36));
+  pod.curated.unshift({ ...item, id, addedAt: Date.now() });
+  return savePod(pod);
+}
+
+export function removePodCuration(id) {
+  const pod = loadPod();
+  pod.curated = pod.curated.filter(c => c.id !== id);
+  return savePod(pod);
+}
+
+export function addPodRequest(req) {
+  const pod = loadPod();
+  const id = req.id || ('pr-' + Date.now().toString(36));
+  pod.requests.unshift({ ...req, id, createdAt: Date.now(), status: 'pending' });
+  return savePod(pod);
+}
+
+export function resolvePodRequest(id, status) {
+  const pod = loadPod();
+  const idx = pod.requests.findIndex(r => r.id === id);
+  if (idx < 0) return pod;
+  const req = pod.requests[idx];
+  pod.requests[idx] = { ...req, status };
+  if (status === 'approved') {
+    if (req.kind === 'open') {
+      pod.session = { open: true, openedAt: Date.now(), durationMin: pod.session.durationMin || 30 };
+    } else if (req.kind === 'extend' && req.minutes) {
+      pod.session = { ...pod.session, durationMin: (pod.session.durationMin || 0) + req.minutes };
+    } else if (req.kind === 'thread' && req.threadId) {
+      if (!pod.curated.some(c => c.threadId === req.threadId)) {
+        pod.curated.unshift({
+          id: 'pc-' + Date.now().toString(36),
+          threadId: req.threadId,
+          title: req.label,
+          addedAt: Date.now(),
+        });
+      }
+    }
+  }
+  return savePod(pod);
 }
